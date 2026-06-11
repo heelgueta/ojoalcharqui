@@ -13,6 +13,7 @@
     <input type="checkbox" name="offers" value="1" {{ 'checked' if offers }} onchange="this.form.submit()" style="vertical-align:middle"> sólo ofertas
   </label>
   <button class="btn">buscar</button>
+  {% if store %}<a class="btn sm" href="/export/{{ store }}.csv" style="margin-left:auto">⬇ CSV</a>{% endif %}
 </form>
 
 {% if not stores %}

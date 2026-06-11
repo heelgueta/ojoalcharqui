@@ -10,6 +10,7 @@
     <option value="gap_abs" {{ 'selected' if sort=='gap_abs' }}>mayor brecha $</option>
   </select>
   <span class="mini">comparando: {% for s in stores %}<span class="chip green">{{ s.name }}</span> {% endfor %}</span>
+  <a class="btn sm" href="/export/comparador.csv" style="margin-left:auto">⬇ CSV</a>
 </form>
 
 {% if stores|length < 2 %}

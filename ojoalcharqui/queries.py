@@ -6,7 +6,11 @@ shrinkflation) run straight SQL.
 """
 from __future__ import annotations
 
+import csv
+import io
+import shutil
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 from . import config, adapters
@@ -181,6 +185,71 @@ def compare_by_ean(min_stores: int = 2, limit: int = 100,
 
 
 # -- ofertas / fake-discount radar (single store) ------------------------
+def export_store_csv(slug: str) -> str:
+    """Latest-run products + observation, flat, for R/Python."""
+    con = _open(slug)
+    rows = con.execute("""
+        SELECT p.product_key, p.ean, p.sku, p.name, p.brand, p.category_path,
+               p.net_content_raw, p.grammage_base, p.grammage_base_unit,
+               o.price, o.list_price, o.price_no_disc, o.in_offer, o.best_card_price,
+               o.ppum, o.ppum_unit, o.unit_price_calc, o.available, o.captured_at,
+               r.location_label, r.scraper_version
+        FROM products p
+        JOIN observations o ON o.product_key = p.product_key
+        JOIN runs r ON r.run_id = o.run_id
+        WHERE o.run_id = (SELECT run_id FROM runs WHERE status IN ('ok','partial')
+                          ORDER BY started_at DESC LIMIT 1)
+        ORDER BY p.category_path, p.name""").fetchall()
+    con.close()
+    buf = io.StringIO()
+    if rows:
+        w = csv.DictWriter(buf, fieldnames=rows[0].keys())
+        w.writeheader()
+        for r in rows:
+            w.writerow(dict(r))
+    return buf.getvalue()
+
+
+def export_comparador_csv() -> str:
+    rows = compare_by_ean(min_stores=2, limit=100000)
+    buf = io.StringIO()
+    stores = [s["slug"] for s in available_stores()]
+    fields = ["ean", "name", "min", "max", "gap_abs", "gap_pct",
+              "cheapest_store", "dearest_store"] + [f"price_{s}" for s in stores]
+    w = csv.DictWriter(buf, fieldnames=fields)
+    w.writeheader()
+    for r in rows:
+        row = {k: r.get(k) for k in fields if not k.startswith("price_")}
+        for s in stores:
+            row[f"price_{s}"] = r["prices"].get(s)
+        w.writerow(row)
+    return buf.getvalue()
+
+
+def make_snapshot(slug: str) -> dict:
+    """Copy a store's live DB to an immutable dated snapshot artifact."""
+    src = config.db_path(slug)
+    if not src.exists():
+        raise FileNotFoundError(src)
+    stamp = datetime.now().strftime("%Y-%m-%d_%H%M")
+    dst = config.SNAPSHOT_DIR / f"{slug}_{stamp}.sqlite"
+    # use sqlite backup API so an in-flight WAL is consistent
+    s = sqlite3.connect(src)
+    d = sqlite3.connect(dst)
+    with d:
+        s.backup(d)
+    s.close(); d.close()
+    return {"snapshot": str(dst.name), "bytes": dst.stat().st_size}
+
+
+def list_snapshots() -> list[dict]:
+    out = []
+    for p in sorted(config.SNAPSHOT_DIR.glob("*.sqlite"), reverse=True):
+        out.append({"name": p.name, "bytes": p.stat().st_size,
+                    "mtime": datetime.fromtimestamp(p.stat().st_mtime).isoformat()[:16]})
+    return out
+
+
 def offers(slug: str, limit: int = 60) -> list[dict]:
     con = _open(slug)
     rows = [dict(r) for r in con.execute("""

@@ -8,7 +8,7 @@ import threading
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -149,6 +149,30 @@ def stop_scrape(slug: str):
 @app.get("/api/progress")
 def progress():
     return engine.all_progress()
+
+
+# -- export / snapshots ---------------------------------------------------
+def _csv_response(text: str, filename: str):
+    return PlainTextResponse(text, media_type="text/csv",
+                             headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@app.get("/export/comparador.csv")
+def export_comparador():
+    return _csv_response(queries.export_comparador_csv(), "comparador.csv")
+
+
+@app.get("/export/{store}.csv")
+def export_store(store: str):
+    return _csv_response(queries.export_store_csv(store), f"{store}.csv")
+
+
+@app.post("/api/snapshot/{store}")
+def snapshot(store: str):
+    try:
+        return queries.make_snapshot(store)
+    except FileNotFoundError:
+        return JSONResponse({"error": "no data for store"}, status_code=404)
 
 
 @app.get("/api/progress/{slug}")
