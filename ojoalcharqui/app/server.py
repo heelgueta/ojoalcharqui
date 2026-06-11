@@ -65,7 +65,8 @@ def operacion(request: Request):
 
 @app.get("/bitacora", response_class=HTMLResponse)
 def bitacora(request: Request):
-    return page(request, "bitacora.html", runs=queries.all_runs())
+    return page(request, "bitacora.html", runs=queries.all_runs(),
+                stores=queries.available_stores(), snapshots=queries.list_snapshots())
 
 
 @app.get("/explorador", response_class=HTMLResponse)
