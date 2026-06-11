@@ -24,7 +24,11 @@ API. Append-only-ish; newest stuff at the bottom of each section.
 |-----------|---------------------|--------|
 | SMU BFF   | Unimarc, Alvi       | Unimarc ✅ / Alvi ⚠ (BFF differs, TODO) |
 | Cencosud  | Jumbo, Santa Isabel | Jumbo ✅ / Santa Isabel (same base, TODO) |
-| Walmart   | Lider, Acuenta      | TODO |
+| Walmart   | Lider               | Lider ✅ (SSR scrape) |
+| Instaleap | Acuenta             | Acuenta ✅ (GraphQL) |
+
+Note: Lider and Acuenta are *both* Walmart-owned but run on different stacks
+(Lider = Walmart "glass"; Acuenta = Instaleap), so they're separate adapters.
 
 ## SMU (Unimarc / Alvi)
 
@@ -58,3 +62,46 @@ API. Append-only-ish; newest stuff at the bottom of each section.
   (Jumbo↔Santa Isabel) productId/refId may align.
 - `sm-web-api.ecomm.cencosud.com` is the shared SM platform → Santa Isabel
   should be the same base with its own sc + apikey + Origin. TODO.
+
+## Walmart (Lider)
+
+- Lider runs Walmart's "glass" stack: product data comes from `/swag/graphql`
+  with persisted-query hashes + a pile of auth headers (`wm_consumer`,
+  `x-o-platform`, traceparent…). Replicating that is brittle.
+- BUT every `/browse/...` category page **server-renders the full product list**
+  into the HTML as RSC flight data. So we skip GraphQL entirely and parse the
+  embedded product JSON from the SSR page (`_extract_products` walks balanced
+  braces around each `"usItemId"`).
+- Recipe: harvest `/browse/<dept>/<sub>/<idpath>` links from the home; for each,
+  `GET {url}?page=N`, parse products, dedup by `usItemId`, page until 2 empty
+  pages. ~45 products/page; pages overlap slightly (a pinned first item) — dedup
+  handles it.
+- Fields: `usItemId` (a GTIN-14), name, brand, `priceInfo{itemPrice, linePrice,
+  wasPrice, unitPrice "$X x lt", savings}`, `price` (int = linePrice),
+  `imageInfo.thumbnailUrl`, `category.categoryPath`, `isOutOfStock`.
+- EAN: `usItemId` is GTIN-14; we accept it as EAN only when stripping leading
+  zeros yields exactly 13 digits (imperfect — many are car/non-grocery GTINs).
+- Coverage caveat: we browse only the category links exposed on the home page.
+  Deeper leaves not linked there are missed in v1. Browsing a parent returns its
+  whole subtree, so top/mid-level links still cover most of the catalog.
+
+## Instaleap (Acuenta)
+
+- Acuenta = Instaleap headless storefront. clientId `SUPER_BODEGA`, store `580`.
+- Single GraphQL endpoint for all Instaleap tenants:
+  `POST https://nextgentheadless.instaleap.io/api/v3`, header `Apikey: <key>`.
+  The tenant is selected by the apikey (found in the JS bundle:
+  `70196ab63cc12d4dbfe0c7ca8c3c603cee68db1975702eac2096898f352e`).
+- Introspection is disabled, so we discovered the schema by crafting queries and
+  reading Apollo's "did you mean" field-suggestion errors (recon/acuenta9-14).
+- Recipe:
+  - tree: `GetCategoryTree` → `getCategory(getCategoryInput:{clientId, storeReference})`
+    returns nested `subCategories`.
+  - products: `getProductsByCategory(getProductsByCategoryInput:{categoryReference,
+    storeReference, clientId, currentPage})` → `{pagination{page,pages}, category{products}}`.
+    Pagination field is **`currentPage`** (top-level on the input, not a nested
+    `pagination` object — that mislead cost a few tries). Walk 1..pages.
+- `CatalogProductModel` is rich: `ean` (array of clean EAN-13!), brand, price,
+  `previousPrice` (was-price for offers), `pricePerSubUnit` (ppum), `subUnit`/
+  `subQty` (grammage), `promotion`, `stock`, `photosUrl`. **100% EAN coverage**
+  in testing → best store for cross-store matching.

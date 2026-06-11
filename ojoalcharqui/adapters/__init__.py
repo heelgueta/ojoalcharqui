@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from .base import StoreAdapter
-from . import smu, cencosud, walmart
+from . import smu, cencosud, walmart, instaleap
 
 _REGISTRY: dict[str, StoreAdapter] = {}
 
@@ -15,6 +15,7 @@ def _register(adapters):
 _register(smu.build_adapters())
 _register(cencosud.build_adapters())
 _register(walmart.build_adapters())
+_register(instaleap.build_adapters())
 
 
 def get(slug: str) -> StoreAdapter:
