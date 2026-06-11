@@ -71,6 +71,39 @@ def _open(slug: str) -> sqlite3.Connection:
     return con
 
 
+def product_url(store: str, raw_json: str | dict | None) -> str | None:
+    """Best-effort link to the product's original page on the store site, rebuilt
+    from the slug/url we stored in raw_json. Verified patterns per store."""
+    if not raw_json:
+        return None
+    raw = raw_json if isinstance(raw_json, dict) else None
+    if raw is None:
+        try:
+            import json as _json
+            raw = _json.loads(raw_json)
+        except Exception:
+            return None
+    try:
+        if store == "jumbo":
+            lt = raw.get("linkText")
+            return f"https://www.jumbo.cl/{lt}/p" if lt else None
+        if store == "lider":
+            cu = raw.get("canonicalUrl")
+            return f"https://www.lider.cl{cu}" if cu else None
+        if store == "unimarc":
+            sl = (raw.get("item") or {}).get("slug")
+            return f"https://www.unimarc.cl{sl}" if sl else None
+        if store == "alvi":
+            sl = (raw.get("item") or {}).get("slug")
+            return f"https://www.alvi.cl{sl}" if sl else None
+        if store == "acuenta":
+            sl = raw.get("slug")
+            return f"https://www.acuenta.cl/p/{sl}" if sl else None
+    except Exception:
+        return None
+    return None
+
+
 def reconcile_orphans(active_slugs: set[str] | None = None) -> int:
     """Heal runs left as 'running' by a crashed/killed process. Any such run that
     isn't currently live (per the engine) is downgraded to 'partial' so its data
@@ -146,8 +179,8 @@ def product_detail(slug: str, product_key: str) -> dict:
         con.close()
         return {}
     history = [dict(r) for r in con.execute("""
-        SELECT r.started_at, o.price, o.list_price, o.best_card_price, o.in_offer,
-               o.unit_price_calc, o.net_content_raw, o.grammage_base, o.available
+        SELECT r.started_at, r.location_label, o.price, o.list_price, o.best_card_price,
+               o.in_offer, o.unit_price_calc, o.net_content_raw, o.grammage_base, o.available
         FROM observations o JOIN runs r ON r.run_id = o.run_id
         WHERE o.product_key = ? ORDER BY r.started_at""", (product_key,))]
     prices = [h["price"] for h in history if h["price"]]
@@ -194,8 +227,12 @@ def product_detail(slug: str, product_key: str) -> dict:
             except Exception:
                 continue
     con.close()
+    last = history[-1] if history else {}
     return {"product": dict(p), "history": history, "stats": stats,
-            "cards": cards, "cross": cross}
+            "cards": cards, "cross": cross,
+            "store_url": product_url(slug, p["raw_json"]),
+            "scrape_date": last.get("started_at"),
+            "scrape_location": last.get("location_label")}
 
 
 def _name_tokens(name: str) -> set[str]:
@@ -225,14 +262,15 @@ def compare_by_ean(min_stores: int = 2, limit: int = 100, sort: str = "gap_pct",
     for s in stores:
         con = _open(s["slug"])
         rows = con.execute("""
-            SELECT p.ean, p.name, p.image_url, o.price
+            SELECT p.ean, p.product_key, p.name, p.image_url, o.price
             FROM products p JOIN observations o ON o.product_key = p.product_key
             WHERE o.run_id = (SELECT run_id FROM runs WHERE status IN ('ok','partial')
                               ORDER BY started_at DESC LIMIT 1)
               AND p.ean IS NOT NULL AND p.ean <> '' AND o.price IS NOT NULL AND o.price > 0""")
         for r in rows:
             cand.setdefault(r["ean"], {}).setdefault(s["slug"], []).append(
-                {"price": r["price"], "name": r["name"], "image": r["image_url"]})
+                {"price": r["price"], "name": r["name"], "image": r["image_url"],
+                 "product_key": r["product_key"]})
         con.close()
 
     out = []
@@ -254,6 +292,7 @@ def compare_by_ean(min_stores: int = 2, limit: int = 100, sort: str = "gap_pct",
             chosen[store] = best
 
         prices = {st: c["price"] for st, c in chosen.items()}
+        product_keys = {st: c["product_key"] for st, c in chosen.items()}
         lo, hi = min(prices.values()), max(prices.values())
         cheapest = min(prices, key=prices.get)
         dearest = max(prices, key=prices.get)
@@ -269,7 +308,7 @@ def compare_by_ean(min_stores: int = 2, limit: int = 100, sort: str = "gap_pct",
         img = next((c["image"] for c in chosen.values() if c["image"]), None)
         out.append({
             "ean": ean, "name": chosen[cheapest]["name"], "image_url": img,
-            "prices": prices,
+            "prices": prices, "product_keys": product_keys, "method": "ean",
             "cheapest_store": cheapest, "dearest_store": dearest,
             "min": lo, "max": hi, "gap_abs": hi - lo,
             "gap_pct": round((hi - lo) / lo * 100, 1),

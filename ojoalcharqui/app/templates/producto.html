@@ -21,6 +21,12 @@
       {% if st.mean %}<span class="chip">media {{ st.mean | clp }}</span>{% endif %}
       {% if p.grammage_base %}<span class="chip green">{{ p.grammage_base }}{{ p.grammage_base_unit }}</span>{% endif %}
     </div>
+    <div class="mini" style="margin-top:10px; display:flex; gap:14px; flex-wrap:wrap; align-items:center">
+      <span>🏬 <b>{{ store|capitalize }}</b></span>
+      {% if detail.scrape_date %}<span>📅 escrapeado {{ detail.scrape_date | short_dt }}</span>{% endif %}
+      {% if detail.scrape_location %}<span>📍 {{ detail.scrape_location }}</span>{% endif %}
+      {% if detail.store_url %}<a class="btn sm primary" href="{{ detail.store_url }}" target="_blank" rel="noopener">ver en {{ store|capitalize }} ↗</a>{% endif %}
+    </div>
   </div>
 </div>
 
