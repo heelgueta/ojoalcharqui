@@ -13,8 +13,27 @@ datasets for consumers, SERNAC, and research.
   images, category tree, price-per-unit.
 - **Tracks** every scrape run with full provenance (timestamp, scraper version,
   location, coverage, errors) so the longitudinal series is reproducible.
-- **Explores** price histories, offers, and shrinkflation.
-- **Compares** the same product across chains to surface the biggest price gaps.
+- **Explores** price histories (per-product page with sparkline + full ficha),
+  offers, and shrinkflation flags.
+- **Estadísticas** — descriptive stats over the latest scrape: price
+  distribution histogram, mean/median/SD/IQR, coverage, by-category and
+  by-brand breakdowns, and a cross-store overview.
+- **Compares** the same product across chains to surface the biggest price gaps
+  — by EAN (exact) and by fuzzy matches (brand+grammage+name), so even Jumbo and
+  Líder (which expose no clean EAN) enter the comparison.
+- **Empareja** — a review queue to confirm/reject fuzzy matches; high-confidence
+  pairs auto-confirm. Confirmations build a labeled dataset.
+- **Schedules** repeat scrapes (in-app while open, or headless via
+  `scripts/scrape_all.py` for an always-on box) so history accumulates.
+- **Exports** CSV per store and for the comparador; **snapshots** a dated,
+  immutable copy of any store DB for archiving/sharing.
+
+## The app (localhost)
+
+`Tablero` · `Operación` (run + schedule scrapes, live progress) · `Explorador`
+(search → product page) · `Comparador` (cross-store gaps) · `Estadísticas` ·
+`Emparejador` (matching queue) · `Ofertas` · `Bitácora` (run ledger + snapshots).
+Dark "hacker" theme with a light toggle.
 
 ## Stores
 
@@ -45,8 +64,15 @@ categories — before a *completo* run).
 ```bash
 python scripts/scrape.py unimarc --full          # full catalog, Santiago Centro
 python scripts/scrape.py jumbo --cats 3 --per 20  # quick sample
+python scripts/scrape_all.py                      # every store, once (for cron/Task Scheduler)
 python scripts/peek.py unimarc                    # inspect a store's data
 ```
+
+### Always-on scheduling
+
+The in-app scheduler (Operación → ⏱ repetir) only fires while the app is open.
+For a server/Raspberry Pi, point Windows Task Scheduler or cron at
+`python scripts/scrape_all.py` on your chosen cadence.
 
 ## Data model
 

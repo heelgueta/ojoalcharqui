@@ -8,6 +8,7 @@
   <div class="card stat"><div class="k">Productos vigilados</div><div class="v">{{ "{:,}".format(totals.products).replace(",",".") }}</div></div>
   <div class="card stat"><div class="k">Scrapes realizados</div><div class="v cyan">{{ totals.runs }}</div></div>
   <div class="card stat"><div class="k">Tiendas con datos</div><div class="v">{{ totals.stores_live }}</div></div>
+  <div class="card stat"><div class="k">Coincidencias entre tiendas</div><div class="v cyan">{{ "{:,}".format(totals.matches).replace(",",".") }}</div><div class="mini"><a href="/comparador?source=grupos">comparar →</a></div></div>
 </div>
 
 <h2>Tiendas</h2>

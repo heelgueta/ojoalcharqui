@@ -7,9 +7,13 @@
 <div class="grid g-stats" style="margin-bottom:18px">
   <div class="card stat"><div class="k">Productos indexados</div><div class="v">{{ "{:,}".format(stats.snapshot).replace(",",".") }}</div></div>
   <div class="card stat"><div class="k">Grupos por EAN</div><div class="v cyan">{{ stats.ean_groups }}</div></div>
-  <div class="card stat"><div class="k">Confirmados a mano</div><div class="v">{{ stats.confirmed }}</div></div>
-  <div class="card stat"><div class="k">En cola</div><div class="v">{{ stats.pending }}</div></div>
+  <div class="card stat"><div class="k">Auto-emparejados</div><div class="v">{{ stats.auto_groups }}</div><div class="mini">marca+gramaje, alta confianza</div></div>
+  <div class="card stat"><div class="k">En cola de revisión</div><div class="v">{{ stats.pending }}</div></div>
 </div>
+<p class="mini" style="margin-top:-8px;margin-bottom:14px">
+  Los grupos por EAN y los auto-emparejados ya alimentan el <a href="/comparador?source=grupos">Comparador (EAN + emparejados)</a>.
+  Tu revisión aquí corrige los casos dudosos.
+</p>
 
 <div class="toolbar">
   <button class="btn primary" id="rebuild">⟳ Reconstruir emparejamientos</button>
@@ -67,7 +71,7 @@
 document.getElementById('rebuild').addEventListener('click', async (e)=>{
   e.target.disabled=true; document.getElementById('rebuild-msg').textContent='reconstruyendo…';
   const r=await fetch('/api/match/rebuild',{method:'POST'}); const j=await r.json();
-  document.getElementById('rebuild-msg').textContent=`${j.snapshot} indexados · ${j.ean_groups} grupos EAN · ${j.fuzzy_candidates} candidatos`;
+  document.getElementById('rebuild-msg').textContent=`${j.snapshot} indexados · ${j.ean_groups} grupos EAN · ${j.auto_groups} auto · ${j.fuzzy_candidates} en cola`;
   setTimeout(()=>location.reload(), 900);
 });
 document.querySelectorAll('.pair').forEach(card=>{

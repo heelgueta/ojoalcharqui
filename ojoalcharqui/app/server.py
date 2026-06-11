@@ -57,10 +57,12 @@ def page(request, name, **ctx):
 @app.get("/", response_class=HTMLResponse)
 def dashboard(request: Request):
     stores = queries.known_stores()
+    ms = matching.stats()
     totals = {
         "products": sum(s["n_products"] for s in stores),
         "runs": sum(s["n_runs"] for s in stores),
         "stores_live": sum(1 for s in stores if s["n_products"]),
+        "matches": ms.get("ean_groups", 0) + ms.get("auto_groups", 0) + ms.get("manual_groups", 0),
     }
     return page(request, "dashboard.html", stores=stores, totals=totals)
 
