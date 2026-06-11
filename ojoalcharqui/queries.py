@@ -293,7 +293,7 @@ def compare_by_ean(min_stores: int = 2, limit: int = 100, sort: str = "gap_pct",
         con = _open(s["slug"])
         rows = con.execute("""
             SELECT p.ean, p.product_key, p.name, p.image_url,
-                   p.grammage_base, p.grammage_base_unit, o.price
+                   p.grammage_base, p.grammage_base_unit, o.price, o.best_card_price
             FROM products p JOIN observations o ON o.product_key = p.product_key
             WHERE o.run_id = (SELECT run_id FROM runs WHERE status IN ('ok','partial')
                               ORDER BY started_at DESC LIMIT 1)
@@ -302,7 +302,7 @@ def compare_by_ean(min_stores: int = 2, limit: int = 100, sort: str = "gap_pct",
             cand.setdefault(r["ean"], {}).setdefault(s["slug"], []).append(
                 {"price": r["price"], "name": r["name"], "image": r["image_url"],
                  "product_key": r["product_key"], "gram": r["grammage_base"],
-                 "gunit": r["grammage_base_unit"]})
+                 "gunit": r["grammage_base_unit"], "card": r["best_card_price"]})
         con.close()
 
     out = []
@@ -325,6 +325,7 @@ def compare_by_ean(min_stores: int = 2, limit: int = 100, sort: str = "gap_pct",
 
         prices = {st: c["price"] for st, c in chosen.items()}
         product_keys = {st: c["product_key"] for st, c in chosen.items()}
+        card_prices = {st: c["card"] for st, c in chosen.items() if c.get("card")}
         lo, hi = min(prices.values()), max(prices.values())
         cheapest = min(prices, key=prices.get)
         dearest = max(prices, key=prices.get)
@@ -344,7 +345,8 @@ def compare_by_ean(min_stores: int = 2, limit: int = 100, sort: str = "gap_pct",
         img = next((c["image"] for c in chosen.values() if c["image"]), None)
         out.append({
             "ean": ean, "name": chosen[cheapest]["name"], "image_url": img,
-            "prices": prices, "product_keys": product_keys, "method": "ean",
+            "prices": prices, "product_keys": product_keys, "card_prices": card_prices,
+            "method": "ean",
             "cheapest_store": cheapest, "dearest_store": dearest,
             "min": lo, "max": hi, "gap_abs": hi - lo,
             "gap_pct": round((hi - lo) / lo * 100, 1),

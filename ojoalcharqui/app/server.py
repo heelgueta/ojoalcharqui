@@ -125,6 +125,12 @@ def comparador(request: Request, sort: str = "gap_pct", source: str = "ean"):
                 source=source, match_stats=matching.stats())
 
 
+@app.get("/api/refresh/{slug}")
+def refresh_one(slug: str):
+    """Convenience: trigger a full re-scrape of one store from anywhere."""
+    return start_scrape(slug, full=1)
+
+
 @app.get("/emparejador", response_class=HTMLResponse)
 def emparejador(request: Request):
     return page(request, "emparejador.html",

@@ -3,6 +3,11 @@
 {% block content %}
 <h1>Comparador</h1>
 <p class="sub">Mismo producto (por EAN) en distintas tiendas, ordenado por la mayor brecha de precio. Munición para el consumidor — y para el SERNAC.</p>
+<p class="mini" style="margin-top:-10px; color:var(--txt-faint)">
+  ⏱ Precios del último scrape de cada tienda (no en vivo):
+  {% for s in stores %}<span class="store-pill" style="margin-right:6px">{{ s.name }} · {{ s.last_run_at | short_dt }}</span>{% endfor %}
+  Los precios y ofertas cambian durante el día; re-escrapea para refrescar.
+</p>
 
 <form class="toolbar" method="get">
   <input type="hidden" name="source" value="{{ source }}">
@@ -51,8 +56,10 @@
     {% for s in stores %}
       {% set pr = r.prices.get(s.slug) %}
       {% set pk = r.product_keys.get(s.slug) if r.product_keys else None %}
+      {% set card = r.card_prices.get(s.slug) if r.card_prices else None %}
       <td class="num price {{ 'low' if pr==r.min and pr else ('hot' if pr==r.max and pr) }}">
         {% if pk %}<a href="/producto/{{ s.slug }}/{{ pk }}">{{ pr | clp }}</a>{% else %}{{ pr | clp }}{% endif %}
+        {% if card and card < pr %}<div class="mini" style="color:var(--warn)">tarjeta {{ card | clp }}</div>{% endif %}
       </td>
     {% endfor %}
     <td class="num">
