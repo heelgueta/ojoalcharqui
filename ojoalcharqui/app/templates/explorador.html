@@ -6,6 +6,7 @@
 
 <form class="toolbar" method="get">
   <select name="store" onchange="this.form.submit()">
+    <option value="all" {{ 'selected' if store=='all' }}>Todas las tiendas</option>
     {% for s in stores %}<option value="{{ s.slug }}" {{ 'selected' if s.slug==store }}>{{ s.name }}</option>{% endfor %}
   </select>
   <input type="text" name="q" value="{{ q }}" placeholder="nombre, marca o EAN…" style="min-width:280px">
@@ -13,7 +14,7 @@
     <input type="checkbox" name="offers" value="1" {{ 'checked' if offers }} onchange="this.form.submit()" style="vertical-align:middle"> sólo ofertas
   </label>
   <button class="btn">buscar</button>
-  {% if store %}<a class="btn sm" href="/export/{{ store }}.csv" style="margin-left:auto">⬇ CSV</a>{% endif %}
+  {% if store and store != 'all' %}<a class="btn sm" href="/export/{{ store }}.csv" style="margin-left:auto">⬇ CSV</a>{% endif %}
 </form>
 
 {% if not stores %}
@@ -24,16 +25,19 @@
 <div class="card" style="padding:0">
 <table>
   <thead><tr>
+    {% if store=='all' %}<th>Tienda</th>{% endif %}
     <th>Producto</th><th>Marca</th><th class="num">Precio</th><th class="num">Normal</th>
     <th class="num">Tarjeta</th><th class="num">$/unidad</th><th></th>
   </tr></thead>
   <tbody>
   {% for r in results %}
+  {% set rstore = r.store if r.store else store %}
   <tr>
+    {% if store=='all' %}<td><span class="store-pill">{{ r.store_name }}</span></td>{% endif %}
     <td><div class="pname">
       {% if r.image_url %}<img class="thumb" src="{{ r.image_url }}" loading="lazy">{% endif %}
       <div>
-        <div><a href="/producto/{{ store }}/{{ r.product_key }}">{{ r.name }}</a></div>
+        <div><a href="/producto/{{ rstore }}/{{ r.product_key }}">{{ r.name }}</a></div>
         <div class="meta">{{ r.net_content_raw or '' }}{% if r.ean %} · {{ r.ean }}{% endif %}</div>
       </div>
     </div></td>

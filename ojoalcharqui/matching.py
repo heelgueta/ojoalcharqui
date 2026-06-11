@@ -264,25 +264,33 @@ def compare_by_group(limit: int = 150, sort: str = "gap_pct",
     # gather snapshot info per member
     by_group: dict[int, dict] = {}
     for r in grows:
-        snap = con.execute("SELECT name, price, image_url FROM snapshot WHERE store=? AND product_key=?",
+        snap = con.execute("""SELECT name, price, image_url, grammage_base, grammage_base_unit
+                              FROM snapshot WHERE store=? AND product_key=?""",
                            (r["store"], r["product_key"])).fetchone()
         if not snap or snap["price"] is None:
             continue
         g = by_group.setdefault(r["group_id"], {"method": r["method"], "prices": {},
-                                                "names": {}, "product_keys": {}, "image": None})
+                                                "names": {}, "product_keys": {},
+                                                "grams": {}, "image": None})
         # keep the cheapest member per store
         if r["store"] not in g["prices"] or snap["price"] < g["prices"][r["store"]]:
             g["prices"][r["store"]] = snap["price"]
             g["names"][r["store"]] = snap["name"]
             g["product_keys"][r["store"]] = r["product_key"]
+            g["grams"][r["store"]] = {"gram": snap["grammage_base"],
+                                      "gunit": snap["grammage_base_unit"]}
         if snap["image_url"] and not g["image"]:
             g["image"] = snap["image_url"]
     con.close()
 
+    from .queries import _grammage_mismatch
     out = []
     for gid, g in by_group.items():
         prices = g["prices"]
         if len(prices) < 2:
+            continue
+        # drop EAN-collision groups (same code, different net content)
+        if _grammage_mismatch(g["grams"].values()):
             continue
         lo, hi = min(prices.values()), max(prices.values())
         if lo <= 0:

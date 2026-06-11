@@ -36,9 +36,12 @@
   <tbody>
   {% for r in rows %}
   <tr>
+    {% set lead = r.product_keys.get(r.cheapest_store) if r.product_keys else None %}
     <td><div class="pname">
       {% if r.image_url %}<img class="thumb" src="{{ r.image_url }}" loading="lazy">{% endif %}
-      <div><div>{{ r.name }}</div><div class="meta">
+      <div>
+        <div>{% if lead %}<a href="/producto/{{ r.cheapest_store }}/{{ lead }}">{{ r.name }}</a>{% else %}{{ r.name }}{% endif %}</div>
+        <div class="meta">
         {% if r.method == 'ean' %}EAN {{ r.ean }}
         {% elif r.method == 'auto' %}<span class="chip" style="font-size:9px">auto-match</span>
         {% elif r.method == 'manual' %}<span class="chip green" style="font-size:9px">confirmado</span>

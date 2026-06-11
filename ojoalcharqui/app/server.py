@@ -95,11 +95,15 @@ def bitacora(request: Request):
 
 
 @app.get("/explorador", response_class=HTMLResponse)
-def explorador(request: Request, store: str = "", q: str = "", offers: int = 0):
-    stores = queries.available_stores()
-    if not store and stores:
-        store = stores[0]["slug"]
-    results = queries.search_products(store, q, only_offers=bool(offers)) if store else []
+def explorador(request: Request, store: str = "all", q: str = "", offers: int = 0):
+    stores = [s for s in queries.available_stores() if s["n_products"]]
+    if store == "all" or not store:
+        store = "all"
+        results = queries.search_all_products(q, only_offers=bool(offers))
+    else:
+        results = queries.search_products(store, q, only_offers=bool(offers))
+        for r in results:
+            r["store"] = store
     return page(request, "explorador.html", stores=stores, store=store, q=q,
                 offers=offers, results=results)
 

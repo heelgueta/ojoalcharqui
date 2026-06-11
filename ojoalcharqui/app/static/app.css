@@ -135,6 +135,11 @@ input[type=text]:focus,select:focus{border-color:var(--acc)}
 .thumb{width:42px; height:42px; object-fit:contain; background:#fff; border-radius:6px; flex:0 0 42px}
 .pname{display:flex; align-items:center; gap:10px}
 .pname .meta{font-size:11px; color:var(--txt-faint); font-family:var(--mono)}
+.pname a{color:var(--txt)}
+.pname a:hover{color:var(--acc); text-decoration:underline}
+td.price a{color:inherit; border-bottom:1px dotted color-mix(in srgb,currentColor 40%,transparent)}
+td.price a:hover{color:var(--acc)}
+.store-pill{display:inline-block;font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.5px;padding:1px 6px;border-radius:10px;border:1px solid var(--line-2);color:var(--txt-dim)}
 
 /* progress / operacion */
 .op-store{display:grid; grid-template-columns:1fr; gap:12px}

@@ -172,6 +172,22 @@ def search_products(slug: str, q: str = "", limit: int = 60, offset: int = 0,
     return rows
 
 
+def search_all_products(q: str = "", per_store: int = 40, total: int = 120,
+                        only_offers: bool = False) -> list[dict]:
+    """Search across every store at once. Each row is tagged with its store so
+    the Explorador can show all chains together (the default view)."""
+    out = []
+    for s in available_stores():
+        if not s["n_products"]:
+            continue
+        for r in search_products(s["slug"], q, limit=per_store, only_offers=only_offers):
+            r["store"] = s["slug"]
+            r["store_name"] = s["name"]
+            out.append(r)
+    out.sort(key=lambda r: (0 if r.get("in_offer") else 1, (r.get("name") or "").lower()))
+    return out[:total]
+
+
 def product_detail(slug: str, product_key: str) -> dict:
     con = _open(slug)
     p = con.execute("SELECT * FROM products WHERE product_key=?", (product_key,)).fetchone()
@@ -235,6 +251,20 @@ def product_detail(slug: str, product_key: str) -> dict:
             "scrape_location": last.get("location_label")}
 
 
+def _grammage_mismatch(chosen, tol: float = 1.12) -> bool:
+    """True if the chosen per-store products clearly differ in net content
+    (different base unit, or size ratio beyond `tol`). Only judges when at least
+    two of them actually carry a grammage; otherwise returns False (can't tell)."""
+    grams = [(c.get("gram"), c.get("gunit")) for c in chosen if c.get("gram")]
+    if len(grams) < 2:
+        return False
+    units = {u for _, u in grams if u}
+    if len(units) > 1:                 # ml vs g vs un — different product
+        return True
+    vals = [g for g, _ in grams]
+    return (max(vals) / min(vals)) > tol if min(vals) > 0 else False
+
+
 def _name_tokens(name: str) -> set[str]:
     """Cheap tokenizer for the name-agreement guard (no accents, no grammage)."""
     import re
@@ -262,7 +292,8 @@ def compare_by_ean(min_stores: int = 2, limit: int = 100, sort: str = "gap_pct",
     for s in stores:
         con = _open(s["slug"])
         rows = con.execute("""
-            SELECT p.ean, p.product_key, p.name, p.image_url, o.price
+            SELECT p.ean, p.product_key, p.name, p.image_url,
+                   p.grammage_base, p.grammage_base_unit, o.price
             FROM products p JOIN observations o ON o.product_key = p.product_key
             WHERE o.run_id = (SELECT run_id FROM runs WHERE status IN ('ok','partial')
                               ORDER BY started_at DESC LIMIT 1)
@@ -270,7 +301,8 @@ def compare_by_ean(min_stores: int = 2, limit: int = 100, sort: str = "gap_pct",
         for r in rows:
             cand.setdefault(r["ean"], {}).setdefault(s["slug"], []).append(
                 {"price": r["price"], "name": r["name"], "image": r["image_url"],
-                 "product_key": r["product_key"]})
+                 "product_key": r["product_key"], "gram": r["grammage_base"],
+                 "gunit": r["grammage_base_unit"]})
         con.close()
 
     out = []
@@ -301,7 +333,11 @@ def compare_by_ean(min_stores: int = 2, limit: int = 100, sort: str = "gap_pct",
         ta = _name_tokens(chosen[cheapest]["name"])
         tb = _name_tokens(chosen[dearest]["name"])
         jac = len(ta & tb) / len(ta | tb) if (ta | tb) else 0
-        suspect = jac < 0.34
+        # grammage-agreement guard: products sharing an EAN but with clearly
+        # different net content are a mislabeled EAN, not the same product
+        # (e.g. Acuenta 500 ml vs Unimarc 750 g) — exclude, the "gap" is bogus.
+        gram_mismatch = _grammage_mismatch(chosen.values())
+        suspect = jac < 0.34 or gram_mismatch
         if suspect and not include_suspect:
             continue
 
@@ -313,6 +349,7 @@ def compare_by_ean(min_stores: int = 2, limit: int = 100, sort: str = "gap_pct",
             "min": lo, "max": hi, "gap_abs": hi - lo,
             "gap_pct": round((hi - lo) / lo * 100, 1),
             "n_stores": len(prices), "suspect": suspect, "name_agree": round(jac, 2),
+            "gram_mismatch": gram_mismatch,
         })
     key = {"gap_pct": "gap_pct", "gap_abs": "gap_abs"}.get(sort, "gap_pct")
     out.sort(key=lambda r: r[key], reverse=True)
