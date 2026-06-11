@@ -143,13 +143,18 @@ class StoreDB:
                  platform: str = ""):
         self.path = Path(path)
         self.store_slug = store_slug
-        first_time = not self.path.exists()
         self.conn = sqlite3.connect(self.path)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.execute("PRAGMA foreign_keys=ON")
         self.conn.executescript(SCHEMA)
-        if first_time:
+        # Backfill meta whenever store_slug is missing — not just on a brand-new
+        # file. A first run that crashed between table-creation and the meta
+        # commit would otherwise leave the DB permanently identity-less (the file
+        # exists, so the old `first_time` guard never re-wrote it). Bit Líder.
+        have_slug = self.conn.execute(
+            "SELECT value FROM meta WHERE key='store_slug'").fetchone()
+        if not have_slug:
             self._init_meta(store_slug, store_name, platform)
         self.conn.commit()
 
