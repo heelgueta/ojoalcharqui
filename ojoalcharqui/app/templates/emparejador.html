@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block crumbs %}<b>Emparejador</b>{% endblock %}
+{% block content %}
+<h1>Emparejador</h1>
+<p class="sub">Une el mismo producto entre tiendas. El EAN empareja exacto y gratis; lo demás se sugiere por marca + gramaje + nombre y lo confirmas tú. Cada confirmación arma un dataset etiquetado.</p>
+
+<div class="grid g-stats" style="margin-bottom:18px">
+  <div class="card stat"><div class="k">Productos indexados</div><div class="v">{{ "{:,}".format(stats.snapshot).replace(",",".") }}</div></div>
+  <div class="card stat"><div class="k">Grupos por EAN</div><div class="v cyan">{{ stats.ean_groups }}</div></div>
+  <div class="card stat"><div class="k">Confirmados a mano</div><div class="v">{{ stats.confirmed }}</div></div>
+  <div class="card stat"><div class="k">En cola</div><div class="v">{{ stats.pending }}</div></div>
+</div>
+
+<div class="toolbar">
+  <button class="btn primary" id="rebuild">⟳ Reconstruir emparejamientos</button>
+  <span class="mini" id="rebuild-msg"></span>
+</div>
+
+<h2>Cola de revisión — ¿es el mismo producto?</h2>
+{% if not queue %}
+  <div class="empty">No hay candidatos pendientes. Reconstruye tras scrapear ≥2 tiendas.</div>
+{% else %}
+<div id="queue">
+  {% for c in queue %}
+  <div class="card pair" data-cand="{{ c.cand_id }}" style="margin-bottom:12px">
+    <div class="pair-grid">
+      <div class="pair-side">
+        {% if c.a.image_url %}<img class="thumb-lg" src="{{ c.a.image_url }}">{% endif %}
+        <div><div class="store-tag">{{ c.a.store }}</div>
+          <div class="pn">{{ c.a.name }}</div>
+          <div class="meta">{{ c.a.brand }} · {{ c.a.grammage_base }}{{ c.a.grammage_base_unit or '' }} · <b>{{ c.a.price | clp }}</b></div>
+        </div>
+      </div>
+      <div class="pair-mid">
+        <div class="score">{{ (c.score*100)|round|int }}%</div>
+        <div class="mini">{{ c.reason }}</div>
+        <div class="pair-actions">
+          <button class="btn sm danger" data-act="rejected">✕ no</button>
+          <button class="btn sm primary" data-act="confirmed">✓ sí</button>
+        </div>
+      </div>
+      <div class="pair-side">
+        {% if c.b.image_url %}<img class="thumb-lg" src="{{ c.b.image_url }}">{% endif %}
+        <div><div class="store-tag">{{ c.b.store }}</div>
+          <div class="pn">{{ c.b.name }}</div>
+          <div class="meta">{{ c.b.brand }} · {{ c.b.grammage_base }}{{ c.b.grammage_base_unit or '' }} · <b>{{ c.b.price | clp }}</b></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<style>
+.pair-grid{display:grid;grid-template-columns:1fr 160px 1fr;gap:16px;align-items:center}
+.pair-side{display:flex;gap:12px;align-items:center}
+.thumb-lg{width:64px;height:64px;object-fit:contain;background:#fff;border-radius:8px;flex:0 0 64px}
+.store-tag{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--acc)}
+.pn{font-weight:600;font-size:14px;line-height:1.3}
+.pair-mid{text-align:center}
+.score{font-family:var(--mono);font-size:26px;font-weight:800;color:var(--acc-2)}
+.pair-actions{display:flex;gap:8px;justify-content:center;margin-top:8px}
+.pair.done{opacity:.4}
+</style>
+<script>
+document.getElementById('rebuild').addEventListener('click', async (e)=>{
+  e.target.disabled=true; document.getElementById('rebuild-msg').textContent='reconstruyendo…';
+  const r=await fetch('/api/match/rebuild',{method:'POST'}); const j=await r.json();
+  document.getElementById('rebuild-msg').textContent=`${j.snapshot} indexados · ${j.ean_groups} grupos EAN · ${j.fuzzy_candidates} candidatos`;
+  setTimeout(()=>location.reload(), 900);
+});
+document.querySelectorAll('.pair').forEach(card=>{
+  card.querySelectorAll('button[data-act]').forEach(b=>b.addEventListener('click', async ()=>{
+    const id=card.dataset.cand, st=b.dataset.act;
+    await fetch(`/api/match/candidate/${id}?status=${st}`,{method:'POST'});
+    card.classList.add('done'); card.querySelectorAll('button').forEach(x=>x.disabled=true);
+  }));
+});
+</script>
+{% endblock %}

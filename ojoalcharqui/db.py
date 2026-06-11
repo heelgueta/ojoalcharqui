@@ -192,14 +192,19 @@ class StoreDB:
         started = self.conn.execute("SELECT started_at FROM runs WHERE run_id=?",
                                     (run_id,)).fetchone()["started_at"]
         dur = (datetime.now(timezone.utc) - datetime.fromisoformat(started)).total_seconds()
+        # actual deduped counts for this run (the engine's yield counters
+        # overcount products that recur across categories)
+        n_obs = self.conn.execute(
+            "SELECT COUNT(*) FROM observations WHERE run_id=?", (run_id,)).fetchone()[0]
+        n_prod = self.conn.execute(
+            "SELECT COUNT(DISTINCT product_key) FROM observations WHERE run_id=?", (run_id,)).fetchone()[0]
         self.conn.execute(
             """UPDATE runs SET finished_at=?, status=?, duration_s=?,
                    n_categories=?, n_products=?, n_observations=?, n_errors=?, notes=?
                WHERE run_id=?""",
             (utcnow(), status, dur,
-             counts.get("n_categories", 0), counts.get("n_products", 0),
-             counts.get("n_observations", 0), counts.get("n_errors", 0),
-             counts.get("notes", ""), run_id),
+             counts.get("n_categories", 0), n_prod, n_obs,
+             counts.get("n_errors", 0), counts.get("notes", ""), run_id),
         )
         self.conn.commit()
 

@@ -12,7 +12,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .. import __version__, adapters, queries
+from .. import __version__, adapters, matching, queries
 from ..engine import ScrapeEngine
 
 HERE = Path(__file__).resolve().parent
@@ -89,6 +89,25 @@ def comparador(request: Request, sort: str = "gap_pct"):
     rows = queries.compare_by_ean(sort=sort)
     stores = queries.available_stores()
     return page(request, "comparador.html", rows=rows, stores=stores, sort=sort)
+
+
+@app.get("/emparejador", response_class=HTMLResponse)
+def emparejador(request: Request):
+    return page(request, "emparejador.html",
+                stats=matching.stats(), queue=matching.candidate_queue(limit=30))
+
+
+@app.post("/api/match/rebuild")
+def match_rebuild():
+    return matching.rebuild_all()
+
+
+@app.post("/api/match/candidate/{cand_id}")
+def match_candidate(cand_id: int, status: str):
+    if status not in ("confirmed", "rejected"):
+        return JSONResponse({"error": "bad status"}, status_code=400)
+    matching.set_candidate_status(cand_id, status)
+    return {"cand_id": cand_id, "status": status}
 
 
 @app.get("/ofertas", response_class=HTMLResponse)

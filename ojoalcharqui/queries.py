@@ -18,17 +18,22 @@ def available_stores() -> list[dict]:
     out = []
     for path in sorted(config.DATA_DIR.glob("*.sqlite")):
         slug = path.stem
+        if slug.startswith("_"):       # central/internal DBs (e.g. _catalog) are not stores
+            continue
         try:
             con = _open(slug)
+            meta = {r["key"]: r["value"] for r in con.execute("SELECT key,value FROM meta")}
+            last = con.execute(
+                "SELECT * FROM runs WHERE status IN ('ok','partial') ORDER BY started_at DESC LIMIT 1"
+            ).fetchone()
+            n_products = con.execute("SELECT COUNT(*) c FROM products").fetchone()["c"]
+            n_runs = con.execute("SELECT COUNT(*) c FROM runs").fetchone()["c"]
+            n_obs = con.execute("SELECT COUNT(*) c FROM observations").fetchone()["c"]
+            con.close()
         except Exception:
             continue
-        meta = {r["key"]: r["value"] for r in con.execute("SELECT key,value FROM meta")}
-        last = con.execute(
-            "SELECT * FROM runs WHERE status IN ('ok','partial') ORDER BY started_at DESC LIMIT 1"
-        ).fetchone()
-        n_products = con.execute("SELECT COUNT(*) c FROM products").fetchone()["c"]
-        n_runs = con.execute("SELECT COUNT(*) c FROM runs").fetchone()["c"]
-        n_obs = con.execute("SELECT COUNT(*) c FROM observations").fetchone()["c"]
+        if not meta.get("store_slug"):   # not a store DB
+            continue
         out.append({
             "slug": slug,
             "name": meta.get("store_name", slug.title()),
@@ -39,7 +44,6 @@ def available_stores() -> list[dict]:
             "last_run_at": last["started_at"] if last else None,
             "last_status": last["status"] if last else None,
         })
-        con.close()
     return out
 
 
