@@ -35,6 +35,34 @@ because mismatches *look* like huge gaps. Two hazards, both handled in
 After the guard, top gaps are real (e.g. Acuenta, a hard-discounter with "luka"
 round-price lines, genuinely 150–215% cheaper than Unimarc on some SKUs).
 
+## Delta storage (schema v2)
+
+Every scrape used to write one observation row per product, even when nothing
+changed — ~40k rows/scrape across the chains, growing the DBs linearly forever.
+v2 switches to **change-only** storage:
+
+- `observations` is now a change-log: a row is written only when a product's
+  *state* (price, list_price, in_offer, best_card_price, availability, grammage,
+  promo) differs from its latest row. An unchanged re-scrape just updates
+  `last_seen_run`/`last_seen_at` and bumps `n_seen`. So a stable price = one row
+  that says "held from X, last confirmed Y, seen N times".
+- `runs` gains `n_changed` / `n_unchanged`.
+- **Read impact**: "latest scrape" no longer means "rows with the newest run_id"
+  (an unchanged product's latest row belongs to an older run). Reads now take the
+  *latest observation per product*, filtered to in-catalog products
+  (`products.last_seen_run = latest run`). Centralised in `queries._CURRENT_JOIN`.
+- v1 DBs auto-migrate on open (`StoreDB._migrate`, additive ADD COLUMN + backfill).
+- Mid-scrape, `_LATEST_RUN` ignores the still-`running` run, so reads keep using
+  the previous complete run until the new one finishes.
+
+## Sync between machines (no re-scraping)
+
+DBs are deliberately **not** in git (they bloat history; one Jumbo DB is ~90 MB).
+They're merge-friendly (UUID runs, store-native keys), so `StoreDB.merge_from`
+unions two machines' histories idempotently. `scripts/sync.py` wraps
+snapshot → merge → optional rclone push/pull. Transport is the user's choice
+(rclone+B2, a Drive/Dropbox synced *snapshots* folder, or a private Git-LFS repo).
+
 ## Platform families (one adapter per family, two stores each)
 
 | Family    | Stores              | Status |
