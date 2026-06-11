@@ -95,8 +95,11 @@ def store_summary(slug: str) -> dict:
     rows = con.execute("""
         SELECT p.brand, p.category_path, p.ean, p.grammage_base, p.grammage_base_unit,
                o.price, o.list_price, o.in_offer, o.best_card_price, o.unit_price_calc
-        FROM products p JOIN observations o ON o.product_key = p.product_key
-        WHERE o.run_id = ?""", (run,)).fetchall()
+        FROM products p
+        JOIN observations o ON o.obs_id = (
+            SELECT obs_id FROM observations ox WHERE ox.product_key = p.product_key
+            ORDER BY captured_at DESC, obs_id DESC LIMIT 1)
+        WHERE p.last_seen_run = ?""", (run,)).fetchall()
     meta = {r["key"]: r["value"] for r in con.execute("SELECT key,value FROM meta")}
     run_row = dict(con.execute("SELECT * FROM runs WHERE run_id=?", (run,)).fetchone())
     con.close()

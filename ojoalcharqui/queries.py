@@ -71,6 +71,22 @@ def _open(slug: str) -> sqlite3.Connection:
     return con
 
 
+_LATEST_RUN = ("(SELECT run_id FROM runs WHERE status IN ('ok','partial') "
+               "ORDER BY started_at DESC LIMIT 1)")
+
+# Current state of every in-catalog product under delta storage: a product is
+# "current" if it was seen in the latest run (products.last_seen_run), and its
+# current price is its most recent observation (which may have been written in
+# an earlier run and merely re-confirmed since). Read queries JOIN through this.
+_CURRENT_JOIN = f"""
+    FROM products p
+    JOIN observations o ON o.obs_id = (
+        SELECT obs_id FROM observations ox WHERE ox.product_key = p.product_key
+        ORDER BY captured_at DESC, obs_id DESC LIMIT 1)
+    WHERE p.last_seen_run = {_LATEST_RUN}
+"""
+
+
 def product_url(store: str, raw_json: str | dict | None) -> str | None:
     """Best-effort link to the product's original page on the store site, rebuilt
     from the slug/url we stored in raw_json. Verified patterns per store."""
@@ -159,11 +175,7 @@ def search_products(slug: str, q: str = "", limit: int = 60, offset: int = 0,
                p.grammage_base, p.grammage_base_unit, p.category_slug,
                o.price, o.list_price, o.in_offer, o.best_card_price, o.unit_price_calc,
                o.ppum, o.ppum_unit, o.captured_at
-        FROM products p
-        JOIN observations o ON o.product_key = p.product_key
-        JOIN runs r ON r.run_id = o.run_id
-        WHERE r.run_id = (SELECT run_id FROM runs WHERE status IN ('ok','partial')
-                          ORDER BY started_at DESC LIMIT 1)
+        {_CURRENT_JOIN}
           AND {' AND '.join(where)}
         ORDER BY o.in_offer DESC, p.name
         LIMIT ? OFFSET ?"""
@@ -291,12 +303,10 @@ def compare_by_ean(min_stores: int = 2, limit: int = 100, sort: str = "gap_pct",
     cand: dict[str, dict[str, list]] = {}
     for s in stores:
         con = _open(s["slug"])
-        rows = con.execute("""
+        rows = con.execute(f"""
             SELECT p.ean, p.product_key, p.name, p.image_url,
                    p.grammage_base, p.grammage_base_unit, o.price, o.best_card_price
-            FROM products p JOIN observations o ON o.product_key = p.product_key
-            WHERE o.run_id = (SELECT run_id FROM runs WHERE status IN ('ok','partial')
-                              ORDER BY started_at DESC LIMIT 1)
+            {_CURRENT_JOIN}
               AND p.ean IS NOT NULL AND p.ean <> '' AND o.price IS NOT NULL AND o.price > 0""")
         for r in rows:
             cand.setdefault(r["ean"], {}).setdefault(s["slug"], []).append(
@@ -362,17 +372,13 @@ def compare_by_ean(min_stores: int = 2, limit: int = 100, sort: str = "gap_pct",
 def export_store_csv(slug: str) -> str:
     """Latest-run products + observation, flat, for R/Python."""
     con = _open(slug)
-    rows = con.execute("""
+    rows = con.execute(f"""
         SELECT p.product_key, p.ean, p.sku, p.name, p.brand, p.category_path,
                p.net_content_raw, p.grammage_base, p.grammage_base_unit,
                o.price, o.list_price, o.price_no_disc, o.in_offer, o.best_card_price,
                o.ppum, o.ppum_unit, o.unit_price_calc, o.available, o.captured_at,
-               r.location_label, r.scraper_version
-        FROM products p
-        JOIN observations o ON o.product_key = p.product_key
-        JOIN runs r ON r.run_id = o.run_id
-        WHERE o.run_id = (SELECT run_id FROM runs WHERE status IN ('ok','partial')
-                          ORDER BY started_at DESC LIMIT 1)
+               o.last_seen_at, o.n_seen
+        {_CURRENT_JOIN}
         ORDER BY p.category_path, p.name""").fetchall()
     con.close()
     buf = io.StringIO()
@@ -426,12 +432,10 @@ def list_snapshots() -> list[dict]:
 
 def offers(slug: str, limit: int = 60) -> list[dict]:
     con = _open(slug)
-    rows = [dict(r) for r in con.execute("""
-        SELECT p.name, p.brand, p.ean, p.image_url,
+    rows = [dict(r) for r in con.execute(f"""
+        SELECT p.name, p.brand, p.ean, p.image_url, p.product_key,
                o.price, o.list_price, o.saving_text, o.unit_price_calc, o.captured_at
-        FROM products p JOIN observations o ON o.product_key = p.product_key
-        WHERE o.run_id = (SELECT run_id FROM runs WHERE status IN ('ok','partial')
-                          ORDER BY started_at DESC LIMIT 1)
+        {_CURRENT_JOIN}
           AND o.in_offer = 1 AND o.list_price > o.price
         ORDER BY (CAST(o.list_price - o.price AS REAL) / o.list_price) DESC
         LIMIT ?""", (limit,))]

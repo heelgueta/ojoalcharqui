@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS runs (
     n_categories    INTEGER DEFAULT 0,
     n_products      INTEGER DEFAULT 0,
     n_observations  INTEGER DEFAULT 0,
+    n_changed       INTEGER DEFAULT 0,
+    n_unchanged     INTEGER DEFAULT 0,
     n_errors        INTEGER DEFAULT 0,
     duration_s      REAL,
     params_json     TEXT,
@@ -75,12 +77,18 @@ CREATE TABLE IF NOT EXISTS products (
 CREATE INDEX IF NOT EXISTS idx_products_ean   ON products(ean);
 CREATE INDEX IF NOT EXISTS idx_products_brand ON products(brand);
 
--- append-only fact table: one row per product per run
+-- change-log fact table: one row per *price state* per product. A new row is
+-- written only when something changed vs the previous state; an unchanged
+-- re-scrape just stamps last_seen_run/last_seen_at and bumps n_seen. So the
+-- price history is the sequence of rows, each valid [captured_at, last_seen_at].
 CREATE TABLE IF NOT EXISTS observations (
     obs_id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    run_id           TEXT NOT NULL,
+    run_id           TEXT NOT NULL,            -- run that first recorded this state
     product_key      TEXT NOT NULL,
-    captured_at      TEXT NOT NULL,
+    captured_at      TEXT NOT NULL,            -- when this state began
+    last_seen_run    TEXT,                     -- most recent run that confirmed it
+    last_seen_at     TEXT,                     -- timestamp of that confirmation
+    n_seen           INTEGER DEFAULT 1,        -- how many runs saw this exact state
     available        INTEGER,                  -- 1/0
     price            INTEGER,                  -- effective price, CLP
     list_price       INTEGER,                  -- precio normal / tachado
@@ -100,6 +108,7 @@ CREATE TABLE IF NOT EXISTS observations (
 );
 CREATE INDEX IF NOT EXISTS idx_obs_product ON observations(product_key);
 CREATE INDEX IF NOT EXISTS idx_obs_run     ON observations(run_id);
+CREATE INDEX IF NOT EXISTS idx_obs_latest  ON observations(product_key, captured_at);
 
 -- card / club / payment-method prices, one row per offer per observation
 CREATE TABLE IF NOT EXISTS card_prices (
@@ -148,6 +157,7 @@ class StoreDB:
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.execute("PRAGMA foreign_keys=ON")
         self.conn.executescript(SCHEMA)
+        self._migrate()
         # Backfill meta whenever store_slug is missing — not just on a brand-new
         # file. A first run that crashed between table-creation and the meta
         # commit would otherwise leave the DB permanently identity-less (the file
@@ -156,6 +166,27 @@ class StoreDB:
             "SELECT value FROM meta WHERE key='store_slug'").fetchone()
         if not have_slug:
             self._init_meta(store_slug, store_name, platform)
+        self.conn.commit()
+
+    def _migrate(self):
+        """Additive migrations for DBs created under an older schema (v1 -> v2:
+        delta-storage columns). SQLite ADD COLUMN is cheap and idempotent here."""
+        def cols(table):
+            return {r[1] for r in self.conn.execute(f"PRAGMA table_info({table})")}
+        obs = cols("observations")
+        for name, ddl in [("last_seen_run", "TEXT"), ("last_seen_at", "TEXT"),
+                          ("n_seen", "INTEGER DEFAULT 1")]:
+            if name not in obs:
+                self.conn.execute(f"ALTER TABLE observations ADD COLUMN {name} {ddl}")
+        runs = cols("runs")
+        for name in ("n_changed", "n_unchanged"):
+            if name not in runs:
+                self.conn.execute(f"ALTER TABLE runs ADD COLUMN {name} INTEGER DEFAULT 0")
+        # backfill last_seen for pre-existing rows so reads have a value
+        self.conn.execute("""UPDATE observations
+                             SET last_seen_run = COALESCE(last_seen_run, run_id),
+                                 last_seen_at  = COALESCE(last_seen_at, captured_at)
+                             WHERE last_seen_run IS NULL""")
         self.conn.commit()
 
     def _init_meta(self, slug, name, platform):
@@ -197,19 +228,24 @@ class StoreDB:
         started = self.conn.execute("SELECT started_at FROM runs WHERE run_id=?",
                                     (run_id,)).fetchone()["started_at"]
         dur = (datetime.now(timezone.utc) - datetime.fromisoformat(started)).total_seconds()
-        # actual deduped counts for this run (the engine's yield counters
-        # overcount products that recur across categories)
-        n_obs = self.conn.execute(
+        # delta-aware counts (deduped; engine yield counters overcount recurrences):
+        #   n_changed   = new state rows written this run
+        #   n_unchanged = products re-confirmed this run (last_seen_run = run, but
+        #                 their state row belongs to an earlier run)
+        #   n_products  = total distinct products seen this run = changed + unchanged
+        n_changed = self.conn.execute(
             "SELECT COUNT(*) FROM observations WHERE run_id=?", (run_id,)).fetchone()[0]
-        n_prod = self.conn.execute(
-            "SELECT COUNT(DISTINCT product_key) FROM observations WHERE run_id=?", (run_id,)).fetchone()[0]
+        n_unchanged = self.conn.execute(
+            "SELECT COUNT(*) FROM observations WHERE last_seen_run=? AND run_id<>?",
+            (run_id, run_id)).fetchone()[0]
+        n_prod = n_changed + n_unchanged
         self.conn.execute(
             """UPDATE runs SET finished_at=?, status=?, duration_s=?,
-                   n_categories=?, n_products=?, n_observations=?, n_errors=?, notes=?
+                   n_categories=?, n_products=?, n_observations=?,
+                   n_changed=?, n_unchanged=?, n_errors=?, notes=?
                WHERE run_id=?""",
-            (utcnow(), status, dur,
-             counts.get("n_categories", 0), n_prod, n_obs,
-             counts.get("n_errors", 0), counts.get("notes", ""), run_id),
+            (utcnow(), status, dur, counts.get("n_categories", 0), n_prod, n_changed,
+             n_changed, n_unchanged, counts.get("n_errors", 0), counts.get("notes", ""), run_id),
         )
         self.conn.commit()
 
@@ -245,16 +281,36 @@ class StoreDB:
             {**p, "first_seen": first_seen, "last_seen": run_id},
         )
 
+    # fields that define a distinct "price state" — a change in any of these
+    # writes a new observation row; otherwise we just re-confirm the last one.
+    _STATE_FIELDS = ("available", "price", "list_price", "price_no_disc", "in_offer",
+                     "best_card_price", "ppum", "saving_text", "promo_text", "grammage_base")
+
     def add_observation(self, run_id: str, obs: dict, card_prices: list[dict] | None = None):
+        """Delta storage: insert a new row only when the state changed vs the
+        product's latest observation; otherwise stamp last_seen and bump n_seen.
+        Returns ("changed"|"unchanged", obs_id)."""
+        prev = self.conn.execute(
+            f"""SELECT obs_id, {', '.join(self._STATE_FIELDS)} FROM observations
+                WHERE product_key=? ORDER BY captured_at DESC, obs_id DESC LIMIT 1""",
+            (obs["product_key"],)).fetchone()
+
+        if prev is not None and all(prev[f] == obs.get(f) for f in self._STATE_FIELDS):
+            self.conn.execute(
+                "UPDATE observations SET last_seen_run=?, last_seen_at=?, n_seen=n_seen+1 "
+                "WHERE obs_id=?", (run_id, obs["captured_at"], prev["obs_id"]))
+            return ("unchanged", prev["obs_id"])
+
         cur = self.conn.execute(
             """INSERT OR IGNORE INTO observations(run_id, product_key, captured_at,
+                   last_seen_run, last_seen_at, n_seen,
                    available, price, list_price, price_no_disc, in_offer,
                    best_card_price, best_card_name, ppum, ppum_unit, unit_price_calc,
                    saving_text, promo_text, net_content_raw, grammage_base, raw_json)
-               VALUES(:run_id,:product_key,:captured_at,:available,:price,:list_price,
-                   :price_no_disc,:in_offer,:best_card_price,:best_card_name,:ppum,
-                   :ppum_unit,:unit_price_calc,:saving_text,:promo_text,
-                   :net_content_raw,:grammage_base,:raw_json)""",
+               VALUES(:run_id,:product_key,:captured_at,:run_id,:captured_at,1,
+                   :available,:price,:list_price,:price_no_disc,:in_offer,
+                   :best_card_price,:best_card_name,:ppum,:ppum_unit,:unit_price_calc,
+                   :saving_text,:promo_text,:net_content_raw,:grammage_base,:raw_json)""",
             {"run_id": run_id, **obs},
         )
         obs_id = cur.lastrowid
@@ -267,7 +323,7 @@ class StoreDB:
                   c.get("promo_name"), c.get("price"), c.get("ppum"), c.get("saving"))
                  for c in card_prices],
             )
-        return obs_id
+        return ("changed", obs_id)
 
     def add_categories(self, run_id: str, cats: list[dict]):
         self.conn.executemany(
