@@ -9,7 +9,13 @@
     <option value="all" {{ 'selected' if store=='all' }}>Todas las tiendas</option>
     {% for s in stores %}<option value="{{ s.slug }}" {{ 'selected' if s.slug==store }}>{{ s.name }}</option>{% endfor %}
   </select>
-  <input type="text" name="q" value="{{ q }}" placeholder="nombre, marca o EAN…" style="min-width:280px">
+  <input type="text" name="q" value="{{ q }}" placeholder="nombre, marca o EAN…" style="min-width:240px">
+  <select name="sort" onchange="this.form.submit()">
+    <option value="relevancia" {{ 'selected' if sort=='relevancia' }}>orden: relevancia</option>
+    <option value="precio_asc" {{ 'selected' if sort=='precio_asc' }}>precio ↑ (menor)</option>
+    <option value="precio_desc" {{ 'selected' if sort=='precio_desc' }}>precio ↓ (mayor)</option>
+    <option value="nombre" {{ 'selected' if sort=='nombre' }}>nombre A-Z</option>
+  </select>
   <label class="chip {{ 'offer' if offers }}" style="cursor:pointer">
     <input type="checkbox" name="offers" value="1" {{ 'checked' if offers }} onchange="this.form.submit()" style="vertical-align:middle"> sólo ofertas
   </label>

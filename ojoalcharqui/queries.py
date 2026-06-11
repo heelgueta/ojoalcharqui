@@ -71,8 +71,13 @@ def _open(slug: str) -> sqlite3.Connection:
     return con
 
 
-_LATEST_RUN = ("(SELECT run_id FROM runs WHERE status IN ('ok','partial') "
-               "ORDER BY started_at DESC LIMIT 1)")
+# "Latest run" = the run the most products were actually last seen in, derived
+# from products.last_seen_run rather than the runs table. This is robust to
+# phantom runs (a scrape that started then died before writing anything, which a
+# reconcile may even stamp with a fake n_products) — those have no products
+# pointing at them, so they can never shadow the real latest scrape.
+_LATEST_RUN = ("(SELECT last_seen_run FROM products WHERE last_seen_run IS NOT NULL "
+               "GROUP BY last_seen_run ORDER BY COUNT(*) DESC LIMIT 1)")
 
 # Current state of every in-catalog product under delta storage: a product is
 # "current" if it was seen in the latest run (products.last_seen_run), and its
@@ -161,8 +166,16 @@ def all_runs() -> list[dict]:
 
 
 # -- search & product detail ---------------------------------------------
+_SORT_SQL = {
+    "relevancia": "o.in_offer DESC, p.name",
+    "precio_asc": "o.price ASC, p.name",
+    "precio_desc": "o.price DESC, p.name",
+    "nombre": "p.name",
+}
+
+
 def search_products(slug: str, q: str = "", limit: int = 60, offset: int = 0,
-                    only_offers: bool = False) -> list[dict]:
+                    only_offers: bool = False, sort: str = "relevancia") -> list[dict]:
     con = _open(slug)
     where, params = ["1=1"], []
     if q:
@@ -170,6 +183,7 @@ def search_products(slug: str, q: str = "", limit: int = 60, offset: int = 0,
         params += [f"%{q}%", f"%{q}%", q]
     if only_offers:
         where.append("o.in_offer = 1")
+    order = _SORT_SQL.get(sort, _SORT_SQL["relevancia"])
     sql = f"""
         SELECT p.product_key, p.name, p.brand, p.ean, p.image_url, p.net_content_raw,
                p.grammage_base, p.grammage_base_unit, p.category_slug,
@@ -177,7 +191,7 @@ def search_products(slug: str, q: str = "", limit: int = 60, offset: int = 0,
                o.ppum, o.ppum_unit, o.captured_at
         {_CURRENT_JOIN}
           AND {' AND '.join(where)}
-        ORDER BY o.in_offer DESC, p.name
+        ORDER BY {order}
         LIMIT ? OFFSET ?"""
     rows = [dict(r) for r in con.execute(sql, params + [limit, offset])]
     con.close()
@@ -185,18 +199,25 @@ def search_products(slug: str, q: str = "", limit: int = 60, offset: int = 0,
 
 
 def search_all_products(q: str = "", per_store: int = 40, total: int = 120,
-                        only_offers: bool = False) -> list[dict]:
+                        only_offers: bool = False, sort: str = "relevancia") -> list[dict]:
     """Search across every store at once. Each row is tagged with its store so
     the Explorador can show all chains together (the default view)."""
     out = []
     for s in available_stores():
         if not s["n_products"]:
             continue
-        for r in search_products(s["slug"], q, limit=per_store, only_offers=only_offers):
+        for r in search_products(s["slug"], q, limit=per_store, only_offers=only_offers, sort=sort):
             r["store"] = s["slug"]
             r["store_name"] = s["name"]
             out.append(r)
-    out.sort(key=lambda r: (0 if r.get("in_offer") else 1, (r.get("name") or "").lower()))
+    if sort == "precio_asc":
+        out.sort(key=lambda r: (r.get("price") is None, r.get("price") or 0))
+    elif sort == "precio_desc":
+        out.sort(key=lambda r: (r.get("price") or 0), reverse=True)
+    elif sort == "nombre":
+        out.sort(key=lambda r: (r.get("name") or "").lower())
+    else:
+        out.sort(key=lambda r: (0 if r.get("in_offer") else 1, (r.get("name") or "").lower()))
     return out[:total]
 
 
@@ -365,6 +386,51 @@ def compare_by_ean(min_stores: int = 2, limit: int = 100, sort: str = "gap_pct",
         })
     key = {"gap_pct": "gap_pct", "gap_abs": "gap_abs"}.get(sort, "gap_pct")
     out.sort(key=lambda r: r[key], reverse=True)
+    return out[:limit]
+
+
+# -- variación: largest price changes over time --------------------------
+def price_changes(store: str = "all", sort: str = "pct", limit: int = 100,
+                  direction: str = "all") -> list[dict]:
+    """Products whose price moved the most across their observation history
+    (first recorded state -> latest state). Needs >= 2 observations, i.e. the
+    longitudinal series — so it fills in as repeat scrapes accumulate."""
+    stores = ([s for s in available_stores() if s["n_products"]]
+              if store == "all" else
+              [s for s in available_stores() if s["slug"] == store])
+    out = []
+    for s in stores:
+        con = _open(s["slug"])
+        rows = con.execute("""
+            SELECT p.product_key, p.name, p.brand, p.image_url, p.ean,
+                   fo.price AS first_price, fo.captured_at AS first_at,
+                   lo.price AS last_price,  lo.last_seen_at AS last_at,
+                   (SELECT COUNT(*) FROM observations WHERE product_key = p.product_key) AS n_points
+            FROM products p
+            JOIN observations fo ON fo.obs_id = (
+                SELECT obs_id FROM observations WHERE product_key = p.product_key
+                ORDER BY captured_at ASC, obs_id ASC LIMIT 1)
+            JOIN observations lo ON lo.obs_id = (
+                SELECT obs_id FROM observations WHERE product_key = p.product_key
+                ORDER BY captured_at DESC, obs_id DESC LIMIT 1)
+            WHERE p.last_seen_run = """ + _LATEST_RUN + """
+              AND (SELECT COUNT(*) FROM observations WHERE product_key = p.product_key) >= 2
+              AND fo.price IS NOT NULL AND lo.price IS NOT NULL AND fo.price <> lo.price
+        """).fetchall()
+        for r in rows:
+            fp, lp = r["first_price"], r["last_price"]
+            ch_abs = lp - fp
+            ch_pct = round(ch_abs / fp * 100, 1) if fp else 0
+            d = dict(r)
+            d.update({"store": s["slug"], "store_name": s["name"],
+                      "change_abs": ch_abs, "change_pct": ch_pct,
+                      "direction": "up" if ch_abs > 0 else "down"})
+            out.append(d)
+        con.close()
+    if direction in ("up", "down"):
+        out = [r for r in out if r["direction"] == direction]
+    key = "change_abs" if sort == "abs" else "change_pct"
+    out.sort(key=lambda r: abs(r[key]), reverse=True)
     return out[:limit]
 
 

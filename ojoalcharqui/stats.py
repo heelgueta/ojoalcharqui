@@ -21,9 +21,10 @@ def _open(slug: str) -> sqlite3.Connection:
 
 
 def _latest_run(con) -> str | None:
-    r = con.execute("SELECT run_id FROM runs WHERE status IN ('ok','partial') "
-                    "ORDER BY started_at DESC LIMIT 1").fetchone()
-    return r["run_id"] if r else None
+    # run that most products were last seen in (robust to phantom/empty runs)
+    r = con.execute("SELECT last_seen_run FROM products WHERE last_seen_run IS NOT NULL "
+                    "GROUP BY last_seen_run ORDER BY COUNT(*) DESC LIMIT 1").fetchone()
+    return r[0] if r else None
 
 
 # -- descriptive helpers --------------------------------------------------

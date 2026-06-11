@@ -95,17 +95,27 @@ def bitacora(request: Request):
 
 
 @app.get("/explorador", response_class=HTMLResponse)
-def explorador(request: Request, store: str = "all", q: str = "", offers: int = 0):
+def explorador(request: Request, store: str = "all", q: str = "", offers: int = 0,
+               sort: str = "relevancia"):
     stores = [s for s in queries.available_stores() if s["n_products"]]
     if store == "all" or not store:
         store = "all"
-        results = queries.search_all_products(q, only_offers=bool(offers))
+        results = queries.search_all_products(q, only_offers=bool(offers), sort=sort)
     else:
-        results = queries.search_products(store, q, only_offers=bool(offers))
+        results = queries.search_products(store, q, only_offers=bool(offers), sort=sort)
         for r in results:
             r["store"] = store
     return page(request, "explorador.html", stores=stores, store=store, q=q,
-                offers=offers, results=results)
+                offers=offers, sort=sort, results=results)
+
+
+@app.get("/variacion", response_class=HTMLResponse)
+def variacion(request: Request, store: str = "all", sort: str = "pct",
+              direction: str = "all"):
+    stores = [s for s in queries.available_stores() if s["n_products"]]
+    rows = queries.price_changes(store=store, sort=sort, direction=direction)
+    return page(request, "variacion.html", stores=stores, store=store, sort=sort,
+                direction=direction, rows=rows)
 
 
 @app.get("/producto/{store}/{product_key}", response_class=HTMLResponse)

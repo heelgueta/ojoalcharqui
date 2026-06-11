@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block crumbs %}<b>Variación</b>{% endblock %}
+{% block content %}
+<h1>Variación en el tiempo</h1>
+<p class="sub">El mismo producto, cuánto cambió su precio entre el primer registro y el más reciente. Se llena a medida que se acumulan scrapes — es la mirada longitudinal.</p>
+
+<form class="toolbar" method="get">
+  <select name="store" onchange="this.form.submit()">
+    <option value="all" {{ 'selected' if store=='all' }}>Todas las tiendas</option>
+    {% for s in stores %}<option value="{{ s.slug }}" {{ 'selected' if s.slug==store }}>{{ s.name }}</option>{% endfor %}
+  </select>
+  <select name="sort" onchange="this.form.submit()">
+    <option value="pct" {{ 'selected' if sort=='pct' }}>mayor cambio %</option>
+    <option value="abs" {{ 'selected' if sort=='abs' }}>mayor cambio $</option>
+  </select>
+  <select name="direction" onchange="this.form.submit()">
+    <option value="all" {{ 'selected' if direction=='all' }}>subidas y bajadas</option>
+    <option value="up" {{ 'selected' if direction=='up' }}>solo subidas ↑</option>
+    <option value="down" {{ 'selected' if direction=='down' }}>solo bajadas ↓</option>
+  </select>
+</form>
+
+{% if not rows %}
+  <div class="empty">
+    Aún no hay cambios de precio registrados. Esto necesita <b>≥2 scrapes</b> de una tienda
+    para comparar en el tiempo. Programa scrapes en <a href="/operacion">Operación</a> y vuelve.
+  </div>
+{% else %}
+<div class="card" style="padding:0">
+<table>
+  <thead><tr>
+    {% if store=='all' %}<th>Tienda</th>{% endif %}
+    <th>Producto</th>
+    <th class="num">Inicial</th><th class="num">Actual</th>
+    <th class="num">Cambio</th><th>Período</th><th class="num">Puntos</th>
+  </tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr>
+    {% if store=='all' %}<td><span class="store-pill">{{ r.store_name }}</span></td>{% endif %}
+    <td><div class="pname">
+      {% if r.image_url %}<img class="thumb" src="{{ r.image_url }}" loading="lazy">{% endif %}
+      <div><div><a href="/producto/{{ r.store }}/{{ r.product_key }}">{{ r.name }}</a></div>
+      <div class="meta">{{ r.brand or '' }}</div></div>
+    </div></td>
+    <td class="num">{{ r.first_price | clp }}</td>
+    <td class="num price">{{ r.last_price | clp }}</td>
+    <td class="num">
+      {% if r.direction == 'up' %}
+        <span class="price hot">↑ +{{ r.change_pct }}%</span>
+      {% else %}
+        <span class="price low">↓ {{ r.change_pct }}%</span>
+      {% endif %}
+      <br><span class="mini">{{ r.change_abs | clp }}</span>
+    </td>
+    <td class="mini">{{ r.first_at | short_dt }}<br>→ {{ r.last_at | short_dt }}</td>
+    <td class="num mini">{{ r.n_points }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="mini" style="margin-top:10px">rojo ↑ = subió · verde ↓ = bajó · {{ rows|length }} productos con cambios</p>
+{% endif %}
+{% endblock %}

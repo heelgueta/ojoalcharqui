@@ -160,9 +160,9 @@ class SMUAdapter:
 
 
 def build_adapters() -> list[StoreAdapter]:
+    # Alvi removed for now — its BFF (bff-alvi-web.alvi.cl) is not a drop-in of
+    # Unimarc's and 400s on /catalog/categories; not needed. See DECISIONS.md.
     return [
         SMUAdapter("unimarc", "Unimarc",
                    "https://bff-unimarc-ecommerce.unimarc.cl", "https://www.unimarc.cl"),
-        SMUAdapter("alvi", "Alvi",
-                   "https://bff-alvi-web.alvi.cl", "https://www.alvi.cl"),
     ]
