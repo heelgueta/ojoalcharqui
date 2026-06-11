@@ -12,7 +12,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Red
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .. import __version__, adapters, matching, queries
+from .. import __version__, adapters, matching, queries, stats
 from ..engine import ScrapeEngine
 
 HERE = Path(__file__).resolve().parent
@@ -21,6 +21,9 @@ app = FastAPI(title="ojo al charqui")
 app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
 
 engine = ScrapeEngine(delay_s=0.6)
+
+# heal any runs left 'running' by a previous crashed/killed process
+queries.reconcile_orphans()
 
 
 # -- jinja filters --------------------------------------------------------
@@ -109,6 +112,15 @@ def match_candidate(cand_id: int, status: str):
         return JSONResponse({"error": "bad status"}, status_code=400)
     matching.set_candidate_status(cand_id, status)
     return {"cand_id": cand_id, "status": status}
+
+
+@app.get("/estadisticas", response_class=HTMLResponse)
+def estadisticas(request: Request, store: str = ""):
+    ov = stats.overview()
+    if not store and ov:
+        store = ov[0]["slug"]
+    summary = stats.store_summary(store) if store else None
+    return page(request, "estadisticas.html", overview=ov, store=store, summary=summary)
 
 
 @app.get("/ofertas", response_class=HTMLResponse)

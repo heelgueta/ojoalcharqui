@@ -71,6 +71,32 @@ def _open(slug: str) -> sqlite3.Connection:
     return con
 
 
+def reconcile_orphans(active_slugs: set[str] | None = None) -> int:
+    """Heal runs left as 'running' by a crashed/killed process. Any such run that
+    isn't currently live (per the engine) is downgraded to 'partial' so its data
+    becomes visible to the app. Returns how many were fixed."""
+    active_slugs = active_slugs or set()
+    fixed = 0
+    for path in config.DATA_DIR.glob("*.sqlite"):
+        slug = path.stem
+        if slug.startswith("_") or slug in active_slugs:
+            continue
+        try:
+            con = sqlite3.connect(path)
+            cur = con.execute(
+                """UPDATE runs SET status='partial',
+                       finished_at=COALESCE(finished_at, started_at),
+                       notes=COALESCE(NULLIF(notes,''), 'interrupted; reconciled'),
+                       n_products=(SELECT COUNT(*) FROM products)
+                   WHERE status='running'""")
+            fixed += cur.rowcount or 0
+            con.commit()
+            con.close()
+        except Exception:
+            continue
+    return fixed
+
+
 # -- runs ledger ----------------------------------------------------------
 def all_runs() -> list[dict]:
     rows = []
@@ -130,13 +156,46 @@ def product_detail(slug: str, product_key: str) -> dict:
         "max": max(prices) if prices else None,
         "n_obs": len(history),
         "current": prices[-1] if prices else None,
+        "mean": round(sum(prices) / len(prices)) if prices else None,
     }
     # shrinkflation: did grammage_base ever drop?
     grams = [h["grammage_base"] for h in history if h["grammage_base"]]
     stats["shrinkflation"] = bool(grams and min(grams) < max(grams))
-    # fake discount: an "offer" whose price >= median of recent non-offer prices
+
+    # latest card/club prices for this product
+    cards = [dict(r) for r in con.execute("""
+        SELECT cp.payment_method, cp.promo_name, cp.price, cp.ppum, cp.saving
+        FROM card_prices cp
+        WHERE cp.obs_id = (SELECT obs_id FROM observations WHERE product_key=?
+                           ORDER BY captured_at DESC LIMIT 1)
+        ORDER BY cp.price""", (product_key,))]
+
+    # same product in other stores (by EAN) — cross-store mini-compare
+    cross = []
+    pe = p["ean"]
+    if pe:
+        for s in available_stores():
+            if s["slug"] == slug:
+                continue
+            try:
+                oc = _open(s["slug"])
+                row = oc.execute("""
+                    SELECT p.product_key, p.name, o.price
+                    FROM products p JOIN observations o ON o.product_key=p.product_key
+                    WHERE o.run_id=(SELECT run_id FROM runs WHERE status IN ('ok','partial')
+                                    ORDER BY started_at DESC LIMIT 1)
+                      AND p.ean=? AND o.price IS NOT NULL
+                    ORDER BY o.price LIMIT 1""", (pe,)).fetchone()
+                oc.close()
+                if row:
+                    cross.append({"store": s["slug"], "store_name": s["name"],
+                                  "product_key": row["product_key"],
+                                  "name": row["name"], "price": row["price"]})
+            except Exception:
+                continue
     con.close()
-    return {"product": dict(p), "history": history, "stats": stats}
+    return {"product": dict(p), "history": history, "stats": stats,
+            "cards": cards, "cross": cross}
 
 
 def _name_tokens(name: str) -> set[str]:

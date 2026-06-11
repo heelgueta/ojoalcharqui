@@ -146,6 +146,14 @@ input[type=text]:focus,select:focus{border-color:var(--acc)}
 .kv{font-family:var(--mono); font-size:12px; color:var(--txt-dim)}
 .kv b{color:var(--txt)}
 
+/* stats page */
+table.bare{width:100%}
+table.bare td,table.bare th{padding:5px 4px; border-bottom:1px solid var(--line)}
+table.bare th{position:static; background:none}
+.covrow{display:flex; justify-content:space-between; font-size:12.5px; margin-bottom:3px}
+tr.rowsel td{background:color-mix(in srgb,var(--acc) 10%,transparent)}
+#hist rect:hover{opacity:1 !important}
+
 /* sparkline */
 .spark{display:block}
 .empty{color:var(--txt-faint); font-family:var(--mono); font-size:13px; padding:30px 0; text-align:center}

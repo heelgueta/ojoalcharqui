@@ -18,9 +18,52 @@
     <div style="margin-top:10px">
       {% if st.shrinkflation %}<span class="chip offer">⚠ posible reduflación (cambió el gramaje)</span>{% endif %}
       <span class="chip">{{ st.n_obs }} observaciones</span>
+      {% if st.mean %}<span class="chip">media {{ st.mean | clp }}</span>{% endif %}
+      {% if p.grammage_base %}<span class="chip green">{{ p.grammage_base }}{{ p.grammage_base_unit }}</span>{% endif %}
     </div>
   </div>
 </div>
+
+{% if detail.cards %}
+<h2>Precios con tarjeta / club</h2>
+<div class="card" style="padding:0">
+<table>
+  <thead><tr><th>Medio de pago</th><th>Promoción</th><th class="num">Precio</th><th class="num">$/u</th><th class="num">Ahorro</th></tr></thead>
+  <tbody>
+  {% for c in detail.cards %}
+  <tr>
+    <td>{{ c.payment_method or '—' }}</td>
+    <td class="mini">{{ c.promo_name or '' }}</td>
+    <td class="num price low">{{ c.price | clp }}</td>
+    <td class="num mini">{{ c.ppum or '' }}</td>
+    <td class="num"><span class="chip green">{{ c.saving or '' }}</span></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+
+{% if detail.cross %}
+<h2>Mismo producto en otras tiendas <span class="mini">(por EAN)</span></h2>
+<div class="card" style="padding:0">
+<table>
+  <thead><tr><th>Tienda</th><th>Producto</th><th class="num">Precio</th><th></th></tr></thead>
+  <tbody>
+  {% set here = st.current %}
+  {% for x in detail.cross %}
+  <tr>
+    <td><strong>{{ x.store_name }}</strong></td>
+    <td>{{ x.name }}</td>
+    <td class="num price {{ 'low' if here and x.price < here else ('hot' if here and x.price > here) }}">{{ x.price | clp }}</td>
+    <td><a class="btn sm" href="/producto/{{ x.store }}/{{ x.product_key }}">ver →</a></td>
+  </tr>
+  {% endfor %}
+  <tr><td><strong>{{ store|capitalize }}</strong> <span class="mini">(esta)</span></td><td>{{ p.name }}</td><td class="num price">{{ here | clp }}</td><td></td></tr>
+  </tbody>
+</table>
+</div>
+{% endif %}
 
 <h2>Historia de precios</h2>
 <div class="card">
@@ -45,6 +88,23 @@
   {% endfor %}
   </tbody>
 </table>
+</div>
+
+<h2>Ficha técnica</h2>
+<div class="card">
+  <table class="bare">
+    <tr><td>product_key</td><td class="mini">{{ p.product_key }}</td></tr>
+    <tr><td>EAN</td><td class="mini">{{ p.ean or '—' }}</td></tr>
+    <tr><td>SKU</td><td class="mini">{{ p.sku or '—' }}</td></tr>
+    <tr><td>Marca</td><td>{{ p.brand or '—' }}</td></tr>
+    <tr><td>Categoría</td><td class="mini">{{ p.category_path or '—' }}</td></tr>
+    <tr><td>Contenido neto</td><td>{{ p.net_content_raw or '—' }}</td></tr>
+    <tr><td>Gramaje (base)</td><td>{% if p.grammage_base %}{{ p.grammage_base }} {{ p.grammage_base_unit }}{% if p.pack_units %} · pack {{ p.pack_units }}{% endif %}{% else %}—{% endif %}</td></tr>
+    <tr><td>Unidad de medida</td><td>{{ p.measurement_unit or '—' }}</td></tr>
+    <tr><td>Visto por primera vez</td><td class="mini">{{ p.first_seen_run }}</td></tr>
+    <tr><td>Visto por última vez</td><td class="mini">{{ p.last_seen_run }}</td></tr>
+  </table>
+  {% if p.description and p.description != p.name %}<p class="mini" style="margin-top:10px">{{ p.description }}</p>{% endif %}
 </div>
 
 <script id="hist" type="application/json">{{ detail.history | tojson }}</script>

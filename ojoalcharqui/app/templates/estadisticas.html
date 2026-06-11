@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block crumbs %}<b>Estadísticas</b>{% endblock %}
+{% block content %}
+<h1>Estadísticas</h1>
+<p class="sub">Exploración descriptiva del último scrape: distribución de precios, tendencia central y dispersión, cobertura y desgloses.</p>
+
+<form class="toolbar" method="get">
+  <select name="store" onchange="this.form.submit()">
+    {% for s in overview %}<option value="{{ s.slug }}" {{ 'selected' if s.slug==store }}>{{ s.name }}</option>{% endfor %}
+  </select>
+  <a class="btn sm" href="/export/{{ store }}.csv">⬇ CSV</a>
+</form>
+
+{% if not summary or summary.empty %}
+  <div class="empty">No hay datos para esta tienda.</div>
+{% else %}
+{% set pr = summary.price %}
+
+<!-- headline -->
+<div class="grid g-stats">
+  <div class="card stat"><div class="k">Productos</div><div class="v">{{ "{:,}".format(summary.n).replace(",",".") }}</div></div>
+  <div class="card stat"><div class="k">Precio mediano</div><div class="v cyan">{{ pr.median|round|int|clp }}</div></div>
+  <div class="card stat"><div class="k">Precio medio (sd)</div><div class="v">{{ pr.mean|round|int|clp }}</div><div class="mini">σ {{ pr.sd|round|int|clp }} · CV {{ (pr.cv*100)|round(0)|int }}%</div></div>
+  <div class="card stat"><div class="k">% en oferta</div><div class="v">{{ summary.offer_rate|round(1) }}<span style="font-size:16px">%</span></div></div>
+</div>
+
+<!-- distribution -->
+<h2>Distribución de precios <span class="mini">(escala log)</span></h2>
+<div class="card">
+  <svg id="hist" width="100%" height="260" viewBox="0 0 980 260" preserveAspectRatio="none"></svg>
+  <div class="mini" style="margin-top:6px">
+    min {{ pr.min|clp }} · Q1 {{ pr.q1|round|int|clp }} · <b>mediana {{ pr.median|round|int|clp }}</b> ·
+    Q3 {{ pr.q3|round|int|clp }} · max {{ pr.max|clp }} · IQR {{ pr.iqr|round|int|clp }}
+  </div>
+</div>
+
+<!-- five-number + coverage -->
+<div class="grid" style="grid-template-columns:1fr 1fr; gap:14px; margin-top:14px">
+  <div class="card">
+    <h2 style="margin-top:0">Resumen numérico</h2>
+    <table class="bare">
+      <tr><td>n</td><td class="num">{{ pr.n }}</td></tr>
+      <tr><td>media</td><td class="num">{{ pr.mean|round|int|clp }}</td></tr>
+      <tr><td>desv. estándar</td><td class="num">{{ pr.sd|round|int|clp }}</td></tr>
+      <tr><td>mínimo</td><td class="num">{{ pr.min|clp }}</td></tr>
+      <tr><td>Q1 (25%)</td><td class="num">{{ pr.q1|round|int|clp }}</td></tr>
+      <tr><td>mediana (50%)</td><td class="num">{{ pr.median|round|int|clp }}</td></tr>
+      <tr><td>Q3 (75%)</td><td class="num">{{ pr.q3|round|int|clp }}</td></tr>
+      <tr><td>máximo</td><td class="num">{{ pr.max|clp }}</td></tr>
+      <tr><td>IQR</td><td class="num">{{ pr.iqr|round|int|clp }}</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0">Cobertura de datos</h2>
+    {% macro bar(label, pct, color) %}
+      <div class="covrow"><span>{{ label }}</span><span class="mini">{{ pct|round(1) }}%</span></div>
+      <div class="bar" style="margin-bottom:12px"><span style="width:{{ pct }}%; background:{{ color }}"></span></div>
+    {% endmacro %}
+    {{ bar("EAN / código de barras", summary.ean_cov, "var(--acc)") }}
+    {{ bar("Gramaje parseado", summary.gram_cov, "var(--acc-2)") }}
+    {{ bar("Precio con tarjeta/club", summary.card_cov, "var(--warn)") }}
+    {% if summary.discount_depth.n %}
+    <div class="mini" style="margin-top:6px">Profundidad media de descuento en ofertas:
+      <b>{{ summary.discount_depth.mean|round(1) }}%</b> (σ {{ summary.discount_depth.sd|round(1) }}%, n={{ summary.discount_depth.n }})</div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- by category -->
+<h2>Por categoría <span class="mini">(top {{ summary.categories|length }} por nº de productos)</span></h2>
+<div class="card" style="padding:0">
+<table>
+  <thead><tr><th>Categoría</th><th class="num">Productos</th><th class="num">Precio mediano</th><th class="num">Precio medio</th><th class="num">% oferta</th></tr></thead>
+  <tbody>
+  {% for c in summary.categories %}
+  <tr>
+    <td><a href="/explorador?store={{ store }}&q={{ c.name }}">{{ c.name }}</a></td>
+    <td class="num">{{ c.n }}</td>
+    <td class="num price">{{ c.median|round|int|clp }}</td>
+    <td class="num">{{ c.mean|round|int|clp }}</td>
+    <td class="num">{{ c.offer_rate|round(1) }}%</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<!-- brands + unit price -->
+<div class="grid" style="grid-template-columns:1fr 1fr; gap:14px; margin-top:14px">
+  <div class="card">
+    <h2 style="margin-top:0">Marcas con más productos</h2>
+    {% set bmax = summary.brands[0].n if summary.brands else 1 %}
+    {% for b in summary.brands %}
+      <div class="covrow"><span>{{ b.name }}</span><span class="mini">{{ b.n }}</span></div>
+      <div class="bar" style="margin-bottom:7px"><span style="width:{{ (b.n/bmax*100) }}%"></span></div>
+    {% endfor %}
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0">Precio por unidad de medida</h2>
+    <p class="mini" style="margin-top:-4px">Mediana del $/unidad calculado (no comparable entre g, ml y un).</p>
+    <table class="bare">
+      <tr><th>Unidad</th><th class="num">n</th><th class="num">$/u mediano</th><th class="num">media</th></tr>
+      {% for u, d in summary.upc_units.items() %}
+        <tr><td>{{ u }}</td><td class="num">{{ d.n }}</td>
+            <td class="num">{{ d.median|round(2) }}</td><td class="num">{{ d.mean|round(2) }}</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+
+<!-- cross-store overview -->
+<h2>Panorama entre tiendas</h2>
+<div class="card" style="padding:0">
+<table>
+  <thead><tr><th>Tienda</th><th class="num">Productos</th><th class="num">Mediana</th><th class="num">Media</th><th class="num">σ</th><th class="num">% oferta</th><th class="num">EAN</th><th class="num">Gramaje</th></tr></thead>
+  <tbody>
+  {% for s in overview %}
+  <tr class="{{ 'rowsel' if s.slug==store }}">
+    <td><a href="/estadisticas?store={{ s.slug }}"><strong>{{ s.name }}</strong></a></td>
+    <td class="num">{{ "{:,}".format(s.n).replace(",",".") }}</td>
+    <td class="num price">{{ s.median|round|int|clp }}</td>
+    <td class="num">{{ s.mean|round|int|clp }}</td>
+    <td class="num mini">{{ s.sd|round|int|clp }}</td>
+    <td class="num">{{ s.offer_rate|round(1) }}%</td>
+    <td class="num mini">{{ s.ean_cov|round(0)|int }}%</td>
+    <td class="num mini">{{ s.gram_cov|round(0)|int }}%</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<script id="histdata" type="application/json">{{ summary.hist|tojson }}</script>
+<script>
+(function(){
+  const data=JSON.parse(document.getElementById('histdata').textContent);
+  const svg=document.getElementById('hist'), W=980,H=260,padL=8,padB=28,padT=10;
+  const bins=data.bins||[]; if(!bins.length) return;
+  const maxc=data.max_count||1, NS='http://www.w3.org/2000/svg';
+  const bw=(W-2*padL)/bins.length;
+  bins.forEach((b,i)=>{
+    const h=(b.count/maxc)*(H-padB-padT);
+    const x=padL+i*bw, y=H-padB-h;
+    const r=document.createElementNS(NS,'rect');
+    r.setAttribute('x',x+0.5); r.setAttribute('y',y); r.setAttribute('width',Math.max(1,bw-1.5)); r.setAttribute('height',h);
+    r.setAttribute('fill', i%2? 'var(--acc)':'var(--acc-2)'); r.setAttribute('opacity','0.85');
+    const t=document.createElementNS(NS,'title');
+    t.textContent=`$${Math.round(b.lo).toLocaleString('es-CL')}–$${Math.round(b.hi).toLocaleString('es-CL')}: ${b.count}`;
+    r.appendChild(t); svg.appendChild(r);
+  });
+  // x labels at a few bins
+  [0, Math.floor(bins.length/2), bins.length-1].forEach(i=>{
+    const x=padL+i*bw+bw/2;
+    const t=document.createElementNS(NS,'text');
+    t.setAttribute('x',x); t.setAttribute('y',H-8); t.setAttribute('fill','#7d93a8');
+    t.setAttribute('font-size','11'); t.setAttribute('font-family','monospace'); t.setAttribute('text-anchor','middle');
+    t.textContent='$'+Math.round(bins[i].lo).toLocaleString('es-CL');
+    svg.appendChild(t);
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}
