@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block crumbs %}<b>Ofertas</b>{% endblock %}
+{% block content %}
+<h1>Radar de ofertas</h1>
+<p class="sub">Mayores descuentos del último scrape. Con más historia, podremos marcar la "oferta trucha" (precio inflado antes de la rebaja).</p>
+
+<form class="toolbar" method="get">
+  <select name="store" onchange="this.form.submit()">
+    {% for s in stores %}<option value="{{ s.slug }}" {{ 'selected' if s.slug==store }}>{{ s.name }}</option>{% endfor %}
+  </select>
+</form>
+
+{% if not rows %}
+  <div class="empty">Sin ofertas detectadas (o sin datos). Scrapea en <a href="/operacion">Operación</a>.</div>
+{% else %}
+<div class="card" style="padding:0">
+<table>
+  <thead><tr><th>Producto</th><th>Marca</th><th class="num">Oferta</th><th class="num">Normal</th><th class="num">Descuento</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr>
+    <td><div class="pname">
+      {% if r.image_url %}<img class="thumb" src="{{ r.image_url }}" loading="lazy">{% endif %}
+      <div><div>{{ r.name }}</div><div class="meta">{{ r.ean or '' }}</div></div>
+    </div></td>
+    <td>{{ r.brand or '—' }}</td>
+    <td class="num price low">{{ r.price | clp }}</td>
+    <td class="num"><span class="strike">{{ r.list_price | clp }}</span></td>
+    <td class="num"><span class="chip offer">-{{ r.discount_pct }}%</span></td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}

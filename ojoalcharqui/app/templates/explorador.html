@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block crumbs %}<b>Explorador</b>{% endblock %}
+{% block content %}
+<h1>Explorador</h1>
+<p class="sub">Busca productos y abre su historia de precios.</p>
+
+<form class="toolbar" method="get">
+  <select name="store" onchange="this.form.submit()">
+    {% for s in stores %}<option value="{{ s.slug }}" {{ 'selected' if s.slug==store }}>{{ s.name }}</option>{% endfor %}
+  </select>
+  <input type="text" name="q" value="{{ q }}" placeholder="nombre, marca o EAN…" style="min-width:280px">
+  <label class="chip {{ 'offer' if offers }}" style="cursor:pointer">
+    <input type="checkbox" name="offers" value="1" {{ 'checked' if offers }} onchange="this.form.submit()" style="vertical-align:middle"> sólo ofertas
+  </label>
+  <button class="btn">buscar</button>
+</form>
+
+{% if not stores %}
+  <div class="empty">No hay datos aún. Anda a <a href="/operacion">Operación</a> y lanza un scrape.</div>
+{% elif not results %}
+  <div class="empty">Sin resultados.</div>
+{% else %}
+<div class="card" style="padding:0">
+<table>
+  <thead><tr>
+    <th>Producto</th><th>Marca</th><th class="num">Precio</th><th class="num">Normal</th>
+    <th class="num">Tarjeta</th><th class="num">$/unidad</th><th></th>
+  </tr></thead>
+  <tbody>
+  {% for r in results %}
+  <tr>
+    <td><div class="pname">
+      {% if r.image_url %}<img class="thumb" src="{{ r.image_url }}" loading="lazy">{% endif %}
+      <div>
+        <div><a href="/producto/{{ store }}/{{ r.product_key }}">{{ r.name }}</a></div>
+        <div class="meta">{{ r.net_content_raw or '' }}{% if r.ean %} · {{ r.ean }}{% endif %}</div>
+      </div>
+    </div></td>
+    <td>{{ r.brand or '—' }}</td>
+    <td class="num price {{ 'low' if r.in_offer }}">{{ r.price | clp }}</td>
+    <td class="num">{% if r.in_offer and r.list_price %}<span class="strike">{{ r.list_price | clp }}</span>{% else %}—{% endif %}</td>
+    <td class="num price">{{ r.best_card_price | clp }}</td>
+    <td class="num mini">{% if r.unit_price_calc %}{{ "%.2f"|format(r.unit_price_calc) }} /{{ r.grammage_base_unit }}{% else %}—{% endif %}</td>
+    <td>{% if r.in_offer %}<span class="chip offer">oferta</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="mini" style="margin-top:10px">{{ results|length }} resultados · último scrape</p>
+{% endif %}
+{% endblock %}

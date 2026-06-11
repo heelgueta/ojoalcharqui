@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block crumbs %}<b>Tablero</b>{% endblock %}
+{% block content %}
+<h1>Tablero</h1>
+<p class="sub">Vigilancia longitudinal de precios del retail chileno.</p>
+
+<div class="grid g-stats">
+  <div class="card stat"><div class="k">Productos vigilados</div><div class="v">{{ "{:,}".format(totals.products).replace(",",".") }}</div></div>
+  <div class="card stat"><div class="k">Scrapes realizados</div><div class="v cyan">{{ totals.runs }}</div></div>
+  <div class="card stat"><div class="k">Tiendas con datos</div><div class="v">{{ totals.stores_live }}</div></div>
+</div>
+
+<h2>Tiendas</h2>
+<div class="grid g-stores">
+  {% for s in stores %}
+  <div class="card store">
+    <div class="row1">
+      <span class="name">{{ s.name }}</span>
+      <span class="dot {{ s.last_status or '' }}" title="{{ s.last_status or 'sin datos' }}"></span>
+    </div>
+    <div class="plat">{{ s.platform or '—' }}</div>
+    <div class="nums">
+      <div><div class="n">{{ "{:,}".format(s.n_products).replace(",",".") }}</div><div class="lbl">productos</div></div>
+      <div><div class="n">{{ s.n_runs }}</div><div class="lbl">scrapes</div></div>
+    </div>
+    <div class="foot">
+      <span>{{ s.last_run_at | short_dt }}</span>
+      {% if s.n_products %}
+        <a class="btn sm" href="/explorador?store={{ s.slug }}">explorar →</a>
+      {% else %}
+        <a class="btn sm primary" href="/operacion">scrapear →</a>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

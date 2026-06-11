@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block crumbs %}<b>Comparador</b>{% endblock %}
+{% block content %}
+<h1>Comparador</h1>
+<p class="sub">Mismo producto (por EAN) en distintas tiendas, ordenado por la mayor brecha de precio. Munición para el consumidor — y para el SERNAC.</p>
+
+<form class="toolbar" method="get">
+  <select name="sort" onchange="this.form.submit()">
+    <option value="gap_pct" {{ 'selected' if sort=='gap_pct' }}>mayor brecha %</option>
+    <option value="gap_abs" {{ 'selected' if sort=='gap_abs' }}>mayor brecha $</option>
+  </select>
+  <span class="mini">comparando: {% for s in stores %}<span class="chip green">{{ s.name }}</span> {% endfor %}</span>
+</form>
+
+{% if stores|length < 2 %}
+  <div class="empty">El comparador necesita al menos 2 tiendas con datos. Scrapea otra en <a href="/operacion">Operación</a>.</div>
+{% elif not rows %}
+  <div class="empty">Sin coincidencias de EAN entre tiendas todavía.</div>
+{% else %}
+<div class="card" style="padding:0">
+<table>
+  <thead><tr>
+    <th>Producto</th>
+    {% for s in stores %}<th class="num">{{ s.name }}</th>{% endfor %}
+    <th class="num">Brecha</th>
+  </tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr>
+    <td><div class="pname">
+      {% if r.image_url %}<img class="thumb" src="{{ r.image_url }}" loading="lazy">{% endif %}
+      <div><div>{{ r.name }}</div><div class="meta">{{ r.ean }}</div></div>
+    </div></td>
+    {% for s in stores %}
+      {% set pr = r.prices.get(s.slug) %}
+      <td class="num price {{ 'low' if pr==r.min and pr else ('hot' if pr==r.max and pr) }}">{{ pr | clp }}</td>
+    {% endfor %}
+    <td class="num">
+      <span class="price hot">+{{ r.gap_pct }}%</span><br>
+      <span class="mini">{{ r.gap_abs | clp }}</span>
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<p class="mini" style="margin-top:10px">verde = más barato · rojo = más caro · {{ rows|length }} productos coincidentes</p>
+{% endif %}
+{% endblock %}

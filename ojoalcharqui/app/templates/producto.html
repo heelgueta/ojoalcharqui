@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block crumbs %}<a href="/explorador?store={{ store }}">Explorador</a> / <b>Producto</b>{% endblock %}
+{% block content %}
+{% if not detail %}
+  <div class="empty">Producto no encontrado.</div>
+{% else %}
+{% set p = detail.product %}{% set st = detail.stats %}
+<div style="display:flex; gap:20px; align-items:flex-start; flex-wrap:wrap">
+  {% if p.image_url %}<img src="{{ p.image_url }}" style="width:120px;height:120px;object-fit:contain;background:#fff;border-radius:12px">{% endif %}
+  <div style="flex:1; min-width:280px">
+    <h1>{{ p.name }}</h1>
+    <p class="sub">{{ p.brand or '' }} · {{ p.net_content_raw or '' }}{% if p.ean %} · EAN {{ p.ean }}{% endif %}</p>
+    <div class="grid g-stats" style="max-width:560px">
+      <div class="card stat"><div class="k">Precio actual</div><div class="v">{{ st.current | clp }}</div></div>
+      <div class="card stat"><div class="k">Mínimo histórico</div><div class="v cyan">{{ st.min | clp }}</div></div>
+      <div class="card stat"><div class="k">Máximo histórico</div><div class="v">{{ st.max | clp }}</div></div>
+    </div>
+    <div style="margin-top:10px">
+      {% if st.shrinkflation %}<span class="chip offer">⚠ posible reduflación (cambió el gramaje)</span>{% endif %}
+      <span class="chip">{{ st.n_obs }} observaciones</span>
+    </div>
+  </div>
+</div>
+
+<h2>Historia de precios</h2>
+<div class="card">
+  <svg id="spark" class="spark" width="100%" height="220" viewBox="0 0 900 220" preserveAspectRatio="none"></svg>
+  <div class="mini" id="spark-cap" style="margin-top:8px"></div>
+</div>
+
+<h2>Observaciones</h2>
+<div class="card" style="padding:0">
+<table>
+  <thead><tr><th>Fecha</th><th class="num">Precio</th><th class="num">Normal</th><th class="num">Tarjeta</th><th class="num">Gramaje</th><th>Estado</th></tr></thead>
+  <tbody>
+  {% for h in detail.history | reverse %}
+  <tr>
+    <td class="mini">{{ h.started_at | short_dt }}</td>
+    <td class="num price {{ 'low' if h.in_offer }}">{{ h.price | clp }}</td>
+    <td class="num">{% if h.list_price and h.list_price != h.price %}<span class="strike">{{ h.list_price | clp }}</span>{% else %}—{% endif %}</td>
+    <td class="num">{{ h.best_card_price | clp }}</td>
+    <td class="num mini">{{ h.net_content_raw or '—' }}</td>
+    <td>{% if not h.available %}<span class="chip">agotado</span>{% elif h.in_offer %}<span class="chip offer">oferta</span>{% else %}<span class="chip green">normal</span>{% endif %}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<script id="hist" type="application/json">{{ detail.history | tojson }}</script>
+<script>
+(function(){
+  const hist=JSON.parse(document.getElementById('hist').textContent).filter(h=>h.price);
+  const svg=document.getElementById('spark'), W=900,H=220,pad=24;
+  if(hist.length<1){ svg.innerHTML='<text x="20" y="40" fill="#7d93a8" font-family=monospace>sin datos</text>'; return; }
+  const xs=hist.map((_,i)=>i), ys=hist.map(h=>h.price);
+  const ymin=Math.min(...ys), ymax=Math.max(...ys), yr=(ymax-ymin)||1;
+  const X=i=> hist.length>1 ? pad+i/(hist.length-1)*(W-2*pad) : W/2;
+  const Y=v=> H-pad-(v-ymin)/yr*(H-2*pad);
+  const NS='http://www.w3.org/2000/svg';
+  function line(pts,color,w){const pl=document.createElementNS(NS,'polyline');pl.setAttribute('points',pts.map(p=>p.join(',')).join(' '));pl.setAttribute('fill','none');pl.setAttribute('stroke',color);pl.setAttribute('stroke-width',w);pl.setAttribute('stroke-linejoin','round');svg.appendChild(pl);}
+  // grid baseline min/max
+  [ymin,ymax].forEach(v=>{const ln=document.createElementNS(NS,'line');ln.setAttribute('x1',pad);ln.setAttribute('x2',W-pad);ln.setAttribute('y1',Y(v));ln.setAttribute('y2',Y(v));ln.setAttribute('stroke','#2a3d50');ln.setAttribute('stroke-dasharray','3 4');svg.appendChild(ln);
+    const t=document.createElementNS(NS,'text');t.setAttribute('x',4);t.setAttribute('y',Y(v)-3);t.setAttribute('fill','#7d93a8');t.setAttribute('font-size','11');t.setAttribute('font-family','monospace');t.textContent='$'+v.toLocaleString('es-CL');svg.appendChild(t);});
+  // area + line
+  const linePts=xs.map(i=>[X(i),Y(ys[i])]);
+  const area=document.createElementNS(NS,'polygon');
+  area.setAttribute('points',[[X(0),H-pad],...linePts,[X(hist.length-1),H-pad]].map(p=>p.join(',')).join(' '));
+  area.setAttribute('fill','rgba(55,247,163,0.10)');svg.appendChild(area);
+  line(linePts,'#37f7a3',2.5);
+  // offer dots
+  hist.forEach((h,i)=>{ if(h.in_offer){const c=document.createElementNS(NS,'circle');c.setAttribute('cx',X(i));c.setAttribute('cy',Y(h.price));c.setAttribute('r',3.5);c.setAttribute('fill','#ffb13d');svg.appendChild(c);} });
+  document.getElementById('spark-cap').textContent=`${hist.length} puntos · ${hist[0].started_at.slice(0,10)} → ${hist[hist.length-1].started_at.slice(0,10)} · puntos ámbar = en oferta`;
+})();
+</script>
+{% endif %}
+{% endblock %}

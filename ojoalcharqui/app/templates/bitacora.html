@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block crumbs %}<b>Bitácora</b>{% endblock %}
+{% block content %}
+<h1>Bitácora</h1>
+<p class="sub">Cada scrape jamás ejecutado, con su procedencia: versión del scraper, ubicación, duración, cobertura y errores.</p>
+
+{% if not runs %}
+  <div class="empty">Aún no hay scrapes. Parte en <a href="/operacion">Operación</a>.</div>
+{% else %}
+<div class="card" style="padding:0">
+<table>
+  <thead><tr>
+    <th>Tienda</th><th>Inicio</th><th>Estado</th><th class="num">Cat.</th><th class="num">Prod.</th>
+    <th class="num">Obs.</th><th class="num">Err.</th><th class="num">Dur.</th><th>Ubicación</th><th>Scraper</th><th>Run</th>
+  </tr></thead>
+  <tbody>
+  {% for r in runs %}
+  <tr>
+    <td><strong>{{ r.store_name }}</strong></td>
+    <td class="mini">{{ r.started_at | short_dt }}</td>
+    <td><span class="dot {{ r.status }}"></span> <span class="mini">{{ r.status }}</span></td>
+    <td class="num">{{ r.n_categories }}</td>
+    <td class="num">{{ "{:,}".format(r.n_products).replace(",",".") }}</td>
+    <td class="num">{{ "{:,}".format(r.n_observations).replace(",",".") }}</td>
+    <td class="num {{ 'price hot' if r.n_errors }}">{{ r.n_errors }}</td>
+    <td class="num mini">{% if r.duration_s %}{{ "%.0f"|format(r.duration_s) }}s{% else %}—{% endif %}</td>
+    <td class="mini">{{ r.location_label or '—' }}</td>
+    <td class="mini">v{{ r.scraper_version }}</td>
+    <td class="mini">{{ r.run_id[:8] }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}

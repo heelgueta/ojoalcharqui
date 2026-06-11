@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}ojo al charqui{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<aside class="sidebar">
+  <a class="brand" href="/">
+    <span class="brand-eye">◉</span>
+    <span class="brand-text">ojo al<br>charqui</span>
+  </a>
+  <nav class="nav">
+    <a href="/"            class="{{ 'on' if request.url.path == '/' }}">▦ Tablero</a>
+    <a href="/operacion"   class="{{ 'on' if request.url.path.startswith('/operacion') }}">⛏ Operación</a>
+    <a href="/explorador"  class="{{ 'on' if request.url.path.startswith('/explorador') }}">🔎 Explorador</a>
+    <a href="/comparador"  class="{{ 'on' if request.url.path.startswith('/comparador') }}">⚖ Comparador</a>
+    <a href="/ofertas"     class="{{ 'on' if request.url.path.startswith('/ofertas') }}">🔥 Ofertas</a>
+    <a href="/bitacora"    class="{{ 'on' if request.url.path.startswith('/bitacora') }}">▤ Bitácora</a>
+  </nav>
+  <div class="side-foot">
+    <button id="theme-toggle" title="cambiar tema">◐ tema</button>
+    <span class="ver">v{{ version }}</span>
+  </div>
+</aside>
+
+<main class="main">
+  <header class="topbar">
+    <div class="crumbs">{% block crumbs %}{% endblock %}</div>
+    <div class="topbar-right">
+      <span class="pulse" id="pulse" title="estado del scraper">● en línea</span>
+    </div>
+  </header>
+  <div class="content">
+    {% block content %}{% endblock %}
+  </div>
+</main>
+<script src="/static/app.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

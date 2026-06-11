@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block crumbs %}<b>Operación</b>{% endblock %}
+{% block content %}
+<h1>Operación</h1>
+<p class="sub">Lanza y supervisa scrapes. Modo <b>muestra</b> = pocas categorías (prueba). Modo <b>completo</b> = catálogo entero, Santiago Centro.</p>
+
+<div class="op-store">
+  {% for s in stores %}
+  <div class="card" data-store="{{ s.slug }}">
+    <div class="op-row">
+      <span class="dot" data-dot></span>
+      <strong style="min-width:120px">{{ s.name }}</strong>
+      <span class="plat" style="font-family:var(--mono);font-size:10px;color:var(--txt-faint)">{{ s.platform }}</span>
+      <span class="kv" data-phase>inactivo</span>
+      <div class="bar" style="max-width:340px"><span data-bar></span></div>
+      <span class="kv" data-counts></span>
+      <span style="margin-left:auto"></span>
+      <button class="btn sm"        data-act="sample">▶ muestra</button>
+      <button class="btn sm primary" data-act="full">⛏ completo</button>
+      <button class="btn sm danger"  data-act="stop" disabled>■ detener</button>
+    </div>
+    <div class="kv" data-current style="margin-top:8px"></div>
+    <div class="log" data-log hidden></div>
+  </div>
+  {% endfor %}
+</div>
+
+<script>
+function fmt(n){return (n||0).toLocaleString('es-CL')}
+document.querySelectorAll('[data-store]').forEach(card=>{
+  const slug=card.dataset.store;
+  card.querySelectorAll('button[data-act]').forEach(b=>{
+    b.addEventListener('click', async()=>{
+      const act=b.dataset.act;
+      if(act==='stop'){ await fetch(`/api/scrape/${slug}/stop`,{method:'POST'}); return; }
+      const full = act==='full' ? 1 : 0;
+      await fetch(`/api/scrape/${slug}?full=${full}`,{method:'POST'});
+    });
+  });
+});
+async function tick(){
+  let all={}; try{ all=await (await fetch('/api/progress')).json(); }catch(e){return;}
+  document.querySelectorAll('[data-store]').forEach(card=>{
+    const p=all[card.dataset.store]; if(!p) return;
+    const dot=card.querySelector('[data-dot]');
+    dot.className='dot '+(p.status||'');
+    card.querySelector('[data-phase]').textContent=p.status==='running'?(p.phase||'…'):(p.status||'inactivo');
+    const tot=p.categories_total||0, done=p.categories_done||0;
+    const pct= tot? Math.round(done/tot*100):(p.status==='running'?6:0);
+    card.querySelector('[data-bar]').style.width=pct+'%';
+    card.querySelector('[data-counts]').innerHTML=`<b>${fmt(p.products)}</b> prod · ${done}/${tot} cat · ${p.errors||0} err`;
+    card.querySelector('[data-current]').textContent=p.current_category?('▸ '+p.current_category):'';
+    const log=card.querySelector('[data-log]');
+    if(p.log&&p.log.length){ log.hidden=false; log.textContent=p.log.join('\n'); log.scrollTop=log.scrollHeight; }
+    const running=p.status==='running';
+    card.querySelectorAll('button[data-act]').forEach(b=>{
+      if(b.dataset.act==='stop') b.disabled=!running; else b.disabled=running;
+    });
+  });
+}
+setInterval(tick,1200); tick();
+</script>
+{% endblock %}
