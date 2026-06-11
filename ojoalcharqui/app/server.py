@@ -109,10 +109,14 @@ def producto(request: Request, store: str, product_key: str):
 
 
 @app.get("/comparador", response_class=HTMLResponse)
-def comparador(request: Request, sort: str = "gap_pct"):
-    rows = queries.compare_by_ean(sort=sort)
+def comparador(request: Request, sort: str = "gap_pct", source: str = "ean"):
     stores = [s for s in queries.available_stores() if s["n_products"] > 0]
-    return page(request, "comparador.html", rows=rows, stores=stores, sort=sort)
+    if source == "grupos":
+        rows = matching.compare_by_group(sort=sort)
+    else:
+        rows = queries.compare_by_ean(sort=sort)
+    return page(request, "comparador.html", rows=rows, stores=stores, sort=sort,
+                source=source, match_stats=matching.stats())
 
 
 @app.get("/emparejador", response_class=HTMLResponse)

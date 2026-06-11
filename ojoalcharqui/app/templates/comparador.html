@@ -5,6 +5,7 @@
 <p class="sub">Mismo producto (por EAN) en distintas tiendas, ordenado por la mayor brecha de precio. Munición para el consumidor — y para el SERNAC.</p>
 
 <form class="toolbar" method="get">
+  <input type="hidden" name="source" value="{{ source }}">
   <select name="sort" onchange="this.form.submit()">
     <option value="gap_pct" {{ 'selected' if sort=='gap_pct' }}>mayor brecha %</option>
     <option value="gap_abs" {{ 'selected' if sort=='gap_abs' }}>mayor brecha $</option>
@@ -12,6 +13,13 @@
   <span class="mini">comparando: {% for s in stores %}<span class="chip green">{{ s.name }}</span> {% endfor %}</span>
   <a class="btn sm" href="/export/comparador.csv" style="margin-left:auto">⬇ CSV</a>
 </form>
+
+<div class="toolbar" style="margin-top:-8px">
+  <a class="btn sm {{ 'primary' if source=='ean' }}" href="/comparador?source=ean&sort={{ sort }}">sólo EAN ({{ match_stats.ean_groups if match_stats else '·' }})</a>
+  <a class="btn sm {{ 'primary' if source=='grupos' }}" href="/comparador?source=grupos&sort={{ sort }}">EAN + emparejados ({{ (match_stats.ean_groups + match_stats.auto_groups + match_stats.manual_groups) if match_stats else '·' }})</a>
+  {% if source=='grupos' %}<span class="mini">incluye Jumbo/Líder vía coincidencias por marca+gramaje (auto y confirmadas). <a href="/emparejador">revisar →</a></span>
+  {% else %}<span class="mini">match exacto por código de barras. Para incluir Jumbo/Líder, usa «EAN + emparejados».</span>{% endif %}
+</div>
 
 {% if stores|length < 2 %}
   <div class="empty">El comparador necesita al menos 2 tiendas con datos. Scrapea otra en <a href="/operacion">Operación</a>.</div>
@@ -30,11 +38,19 @@
   <tr>
     <td><div class="pname">
       {% if r.image_url %}<img class="thumb" src="{{ r.image_url }}" loading="lazy">{% endif %}
-      <div><div>{{ r.name }}</div><div class="meta">{{ r.ean }}</div></div>
+      <div><div>{{ r.name }}</div><div class="meta">
+        {% if r.method == 'ean' %}EAN {{ r.ean }}
+        {% elif r.method == 'auto' %}<span class="chip" style="font-size:9px">auto-match</span>
+        {% elif r.method == 'manual' %}<span class="chip green" style="font-size:9px">confirmado</span>
+        {% else %}{{ r.ean }}{% endif %}
+      </div></div>
     </div></td>
     {% for s in stores %}
       {% set pr = r.prices.get(s.slug) %}
-      <td class="num price {{ 'low' if pr==r.min and pr else ('hot' if pr==r.max and pr) }}">{{ pr | clp }}</td>
+      {% set pk = r.product_keys.get(s.slug) if r.product_keys else None %}
+      <td class="num price {{ 'low' if pr==r.min and pr else ('hot' if pr==r.max and pr) }}">
+        {% if pk %}<a href="/producto/{{ s.slug }}/{{ pk }}">{{ pr | clp }}</a>{% else %}{{ pr | clp }}{% endif %}
+      </td>
     {% endfor %}
     <td class="num">
       <span class="price hot">+{{ r.gap_pct }}%</span><br>
