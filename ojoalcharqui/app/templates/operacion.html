@@ -19,11 +19,28 @@
       <button class="btn sm primary" data-act="full">⛏ completo</button>
       <button class="btn sm danger"  data-act="stop" disabled>■ detener</button>
     </div>
+    <div class="op-row" style="margin-top:8px">
+      <span class="mini" style="color:var(--txt-faint)">⏱ repetir:</span>
+      <select class="sched" data-store="{{ s.slug }}" style="padding:5px 8px; font-size:12px">
+        {% set cur = sched.get(s.slug, {}).get('every_hours', 0) %}
+        {% for hours, label in intervals.items() %}
+          <option value="{{ hours }}" {{ 'selected' if hours==cur }}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <span class="mini" data-sched-info>
+        {% set si = sched.get(s.slug) %}
+        {% if si and si.last_run %}último auto: {{ si.last_run | short_dt }}{% endif %}
+      </span>
+    </div>
     <div class="kv" data-current style="margin-top:8px"></div>
     <div class="log" data-log hidden></div>
   </div>
   {% endfor %}
 </div>
+<p class="mini" style="margin-top:12px; color:var(--txt-faint)">
+  La programación corre sólo mientras la app está abierta. Para un equipo siempre encendido,
+  usa <code>python scripts/scrape_all.py</code> desde el Programador de tareas de Windows o cron.
+</p>
 
 <script>
 function fmt(n){return (n||0).toLocaleString('es-CL')}
@@ -36,6 +53,14 @@ document.querySelectorAll('[data-store]').forEach(card=>{
       const full = act==='full' ? 1 : 0;
       await fetch(`/api/scrape/${slug}?full=${full}`,{method:'POST'});
     });
+  });
+});
+document.querySelectorAll('select.sched').forEach(sel=>{
+  sel.addEventListener('change', async()=>{
+    const slug=sel.dataset.store;
+    const r=await fetch(`/api/schedule/${slug}?every_hours=${sel.value}`,{method:'POST'});
+    const info=sel.parentElement.querySelector('[data-sched-info]');
+    info.textContent = sel.value==='0' ? 'sin auto' : ('✓ '+sel.options[sel.selectedIndex].text);
   });
 });
 async function tick(){

@@ -79,6 +79,13 @@ Note: Lider and Acuenta are *both* Walmart-owned but run on different stacks
   (Jumbo↔Santa Isabel) productId/refId may align.
 - `sm-web-api.ecomm.cencosud.com` is the shared SM platform → Santa Isabel
   should be the same base with its own sc + apikey + Origin. TODO.
+- **Santa Isabel — deferred.** Its bundle exposes the *same* catalog apikey
+  `WlVnnB7c1BblmgUPOfg`, but on `sm-web-api` that key is bound to the **Jumbo**
+  VTEX account: every response says `sellerName: "Jumbo Chile"`, and `sc` only
+  switches price lists *within* Jumbo (sc=3/11 give different prices, same
+  seller). So SI's real catalog is routed by a mechanism we haven't pinned
+  (different base host or an account header). Not a priority store → parked;
+  recon scripts in `recon/santaisabel*.py` for whoever resumes it.
 
 ## Walmart (Lider)
 

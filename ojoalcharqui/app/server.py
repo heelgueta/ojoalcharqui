@@ -14,6 +14,7 @@ from fastapi.templating import Jinja2Templates
 
 from .. import __version__, adapters, matching, queries, stats
 from ..engine import ScrapeEngine
+from ..scheduler import ALLOWED_INTERVALS, Scheduler
 
 HERE = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(HERE / "templates"))
@@ -24,6 +25,9 @@ engine = ScrapeEngine(delay_s=0.6)
 
 # heal any runs left 'running' by a previous crashed/killed process
 queries.reconcile_orphans()
+
+scheduler = Scheduler(engine)
+scheduler.start()
 
 
 # -- jinja filters --------------------------------------------------------
@@ -63,7 +67,23 @@ def dashboard(request: Request):
 
 @app.get("/operacion", response_class=HTMLResponse)
 def operacion(request: Request):
-    return page(request, "operacion.html", stores=queries.known_stores())
+    sched = {s["slug"]: s for s in scheduler.status()}
+    return page(request, "operacion.html", stores=queries.known_stores(),
+                sched=sched, intervals=ALLOWED_INTERVALS)
+
+
+@app.post("/api/schedule/{slug}")
+def set_schedule(slug: str, every_hours: int):
+    try:
+        entry = scheduler.set_store(slug, every_hours)
+    except ValueError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    return {"slug": slug, **entry}
+
+
+@app.get("/api/schedule")
+def get_schedule():
+    return scheduler.status()
 
 
 @app.get("/bitacora", response_class=HTMLResponse)
