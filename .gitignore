@@ -4,6 +4,7 @@ data/*.sqlite-wal
 data/*.sqlite-shm
 data/snapshots/
 data/images/
+data/_*.json
 
 # python
 __pycache__/
