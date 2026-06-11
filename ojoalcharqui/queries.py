@@ -139,13 +139,30 @@ def product_detail(slug: str, product_key: str) -> dict:
     return {"product": dict(p), "history": history, "stats": stats}
 
 
+def _name_tokens(name: str) -> set[str]:
+    """Cheap tokenizer for the name-agreement guard (no accents, no grammage)."""
+    import re
+    import unicodedata
+    n = "".join(c for c in unicodedata.normalize("NFD", (name or "").lower())
+                if unicodedata.category(c) != "Mn")
+    n = re.sub(r"\b\d+([.,]\d+)?\s*(kg|g|gr|grs|mg|l|lt|ml|cc|un|u|pack)\b", " ", n)
+    stop = {"de", "la", "el", "con", "sin", "y", "pack", "sabor", "un"}
+    return {t for t in re.findall(r"[a-z0-9]+", n) if len(t) > 1 and t not in stop}
+
+
 # -- comparador (cross-store, by EAN) ------------------------------------
-def compare_by_ean(min_stores: int = 2, limit: int = 100,
-                   sort: str = "gap_pct") -> list[dict]:
+def compare_by_ean(min_stores: int = 2, limit: int = 100, sort: str = "gap_pct",
+                   include_suspect: bool = False) -> list[dict]:
+    """Same product (by EAN) across stores. Robust to two data hazards:
+    * intra-store EAN collisions (a wrong EAN on a different product) — we keep,
+      per store, the candidate whose name best agrees with the other stores.
+    * cross-store name disagreement — rows where the matched products clearly
+      aren't the same thing (bad source EAN) are flagged suspect and hidden by
+      default, so the headline gaps are real, not data errors.
+    """
     stores = available_stores()
-    by_ean: dict[str, dict] = {}
-    name_for: dict[str, str] = {}
-    img_for: dict[str, str] = {}
+    # ean -> store -> list of {price, name, image}
+    cand: dict[str, dict[str, list]] = {}
     for s in stores:
         con = _open(s["slug"])
         rows = con.execute("""
@@ -153,31 +170,51 @@ def compare_by_ean(min_stores: int = 2, limit: int = 100,
             FROM products p JOIN observations o ON o.product_key = p.product_key
             WHERE o.run_id = (SELECT run_id FROM runs WHERE status IN ('ok','partial')
                               ORDER BY started_at DESC LIMIT 1)
-              AND p.ean IS NOT NULL AND p.ean <> '' AND o.price IS NOT NULL""")
+              AND p.ean IS NOT NULL AND p.ean <> '' AND o.price IS NOT NULL AND o.price > 0""")
         for r in rows:
-            ean = r["ean"]
-            by_ean.setdefault(ean, {})[s["slug"]] = r["price"]
-            name_for.setdefault(ean, r["name"])
-            if r["image_url"]:
-                img_for.setdefault(ean, r["image_url"])
+            cand.setdefault(r["ean"], {}).setdefault(s["slug"], []).append(
+                {"price": r["price"], "name": r["name"], "image": r["image_url"]})
         con.close()
 
     out = []
-    for ean, prices in by_ean.items():
-        if len(prices) < min_stores:
+    for ean, per_store in cand.items():
+        if len(per_store) < min_stores:
             continue
-        lo = min(prices.values()); hi = max(prices.values())
-        if lo <= 0:
+        # reference token set = most frequent tokens across all candidates
+        from collections import Counter
+        tok_counter: Counter = Counter()
+        for lst in per_store.values():
+            for c in lst:
+                tok_counter.update(_name_tokens(c["name"]))
+        ref = {t for t, n in tok_counter.items() if n >= 1}
+
+        chosen: dict[str, dict] = {}
+        for store, lst in per_store.items():
+            # pick the candidate whose name best agrees with the reference
+            best = max(lst, key=lambda c: len(_name_tokens(c["name"]) & ref))
+            chosen[store] = best
+
+        prices = {st: c["price"] for st, c in chosen.items()}
+        lo, hi = min(prices.values()), max(prices.values())
+        cheapest = min(prices, key=prices.get)
+        dearest = max(prices, key=prices.get)
+
+        # name-agreement guard between the two extreme stores
+        ta = _name_tokens(chosen[cheapest]["name"])
+        tb = _name_tokens(chosen[dearest]["name"])
+        jac = len(ta & tb) / len(ta | tb) if (ta | tb) else 0
+        suspect = jac < 0.34
+        if suspect and not include_suspect:
             continue
+
+        img = next((c["image"] for c in chosen.values() if c["image"]), None)
         out.append({
-            "ean": ean, "name": name_for.get(ean, ean),
-            "image_url": img_for.get(ean),
+            "ean": ean, "name": chosen[cheapest]["name"], "image_url": img,
             "prices": prices,
-            "cheapest_store": min(prices, key=prices.get),
-            "dearest_store": max(prices, key=prices.get),
+            "cheapest_store": cheapest, "dearest_store": dearest,
             "min": lo, "max": hi, "gap_abs": hi - lo,
             "gap_pct": round((hi - lo) / lo * 100, 1),
-            "n_stores": len(prices),
+            "n_stores": len(prices), "suspect": suspect, "name_agree": round(jac, 2),
         })
     key = {"gap_pct": "gap_pct", "gap_abs": "gap_abs"}.get(sort, "gap_pct")
     out.sort(key=lambda r: r[key], reverse=True)

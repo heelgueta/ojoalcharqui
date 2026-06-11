@@ -18,6 +18,23 @@ API. Append-only-ish; newest stuff at the bottom of each section.
 - **Grammage** parsed to a base unit (g/ml/un) at write time so unit prices are
   comparable and shrinkflation (grammage drop at same price) is detectable.
 
+## Data quality: the biggest "gaps" are often errors
+
+The Comparador's headline (largest price gaps) is exactly where bad data surfaces,
+because mismatches *look* like huge gaps. Two hazards, both handled in
+`compare_by_ean`:
+
+1. **Intra-store EAN collisions** — a store occasionally puts the wrong EAN on a
+   product (e.g. Acuenta tagged a single yoghurt with a 6-pack's EAN → a fake
+   $650-vs-$2750 "gap"). Rare (~2/4300 EANs at Acuenta) but loud. We keep, per
+   store, the candidate whose *name* best agrees with the other stores.
+2. **Cross-store name disagreement** — if the matched products' names clearly
+   aren't the same thing, the source EAN is wrong. We flag those `suspect`
+   (name-token Jaccard < 0.34) and hide them by default.
+
+After the guard, top gaps are real (e.g. Acuenta, a hard-discounter with "luka"
+round-price lines, genuinely 150–215% cheaper than Unimarc on some SKUs).
+
 ## Platform families (one adapter per family, two stores each)
 
 | Family    | Stores              | Status |

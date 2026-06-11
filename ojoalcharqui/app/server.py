@@ -87,7 +87,7 @@ def producto(request: Request, store: str, product_key: str):
 @app.get("/comparador", response_class=HTMLResponse)
 def comparador(request: Request, sort: str = "gap_pct"):
     rows = queries.compare_by_ean(sort=sort)
-    stores = queries.available_stores()
+    stores = [s for s in queries.available_stores() if s["n_products"] > 0]
     return page(request, "comparador.html", rows=rows, stores=stores, sort=sort)
 
 
