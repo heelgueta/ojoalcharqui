@@ -1,0 +1,116 @@
+[
+  {
+    "store": "jumbo",
+    "url": "https://www.jumbo.cl/",
+    "status": 200,
+    "final_url": "https://www.jumbo.cl/",
+    "server": "nginx, Cencosud",
+    "vtex_headers": {},
+    "platforms": [
+      "react",
+      "smdigital",
+      "vtex"
+    ],
+    "embedded_keys": [],
+    "api_hosts": [
+      "fonts.googleapis.com"
+    ],
+    "html_size": 3370992
+  },
+  {
+    "store": "santaisabel",
+    "url": "https://www.santaisabel.cl/",
+    "status": 200,
+    "final_url": "https://www.santaisabel.cl/",
+    "server": "nginx, Cencosud",
+    "vtex_headers": {},
+    "platforms": [],
+    "embedded_keys": [],
+    "api_hosts": [],
+    "html_size": 91265
+  },
+  {
+    "store": "lider",
+    "url": "https://www.lider.cl/",
+    "status": 200,
+    "final_url": "https://www.lider.cl/inicio",
+    "server": "",
+    "vtex_headers": {},
+    "platforms": [
+      "instaleap",
+      "nextjs",
+      "react"
+    ],
+    "embedded_keys": [
+      {
+        "label": "apiKey",
+        "key": "AIzaSyCX5gh3yoq4316wUDxRpljFOwWA6_-BEMg"
+      },
+      {
+        "label": "apiKey",
+        "key": "AIzaSyBIAnB1a3UejjFVRNtszhaEE8yrKySRTEo"
+      },
+      {
+        "label": "apiKey",
+        "key": "AIzaSyBvv63fBVZ1RtNJLGkN9XCFE1WfVl0o1HY"
+      }
+    ],
+    "api_hosts": [
+      "developer.api.us.walmart.com"
+    ],
+    "html_size": 655365
+  },
+  {
+    "store": "unimarc",
+    "url": "https://www.unimarc.cl/",
+    "status": 200,
+    "final_url": "https://www.unimarc.cl/",
+    "server": "",
+    "vtex_headers": {},
+    "platforms": [
+      "nextjs",
+      "react"
+    ],
+    "embedded_keys": [],
+    "api_hosts": [
+      "fonts.googleapis.com",
+      "maps.googleapis.com"
+    ],
+    "html_size": 1770394
+  },
+  {
+    "store": "tottus",
+    "url": "https://www.tottus.cl/",
+    "status": 403,
+    "final_url": "https://www.tottus.cl/tottus-cl",
+    "server": "cloudflare",
+    "vtex_headers": {},
+    "platforms": [],
+    "embedded_keys": [],
+    "api_hosts": [],
+    "html_size": 5729
+  },
+  {
+    "store": "acuenta",
+    "url": "https://www.acuenta.cl/",
+    "error": "ConnectError: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: unable to get local issuer certificate (_ssl.c:1028)"
+  },
+  {
+    "store": "alvi",
+    "url": "https://www.alvi.cl/",
+    "status": 200,
+    "final_url": "https://www.alvi.cl/",
+    "server": "",
+    "vtex_headers": {},
+    "platforms": [
+      "nextjs",
+      "react"
+    ],
+    "embedded_keys": [],
+    "api_hosts": [
+      "fonts.googleapis.com",
+      "maps.googleapis.com"
+    ],
+    "html_size": 296954
+  }
+]

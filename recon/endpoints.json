@@ -1,0 +1,41 @@
+{
+  "jumbo": {
+    "hosts": [],
+    "paths": [
+      "/v1/intent/",
+      "/v1/quizzes/"
+    ]
+  },
+  "unimarc": {
+    "hosts": [
+      "bff-unimarc-ecommerce.unimarc.cl",
+      "bff-unimarc-web.unimarc.cl",
+      "carrito.unimarc.cl",
+      "checkout.unimarc.cl",
+      "locales.unimarc.cl",
+      "micuenta.unimarc.cl",
+      "www.alvi.cl",
+      "www.unimarc.cl"
+    ],
+    "paths": [
+      "/api/get-ip",
+      "/api/getToken",
+      "/catalog/banners/search",
+      "/catalog/product/facets",
+      "/catalog/product/nutritional-data/",
+      "/catalog/product/search/by-promotion/",
+      "/catalog/product/search/by-slug/",
+      "/catalog/product/search/my-usuals",
+      "/catalog/sponsored-banners",
+      "/catalog/sponsored-banners/click",
+      "/catalog/sponsored-banners/home",
+      "/catalog/sponsored-products/click",
+      "/catalog/suggestions/",
+      "/catalog/suggestions/most-wanted",
+      "/v1/projects",
+      "/v1/token",
+      "/v2/passwordPolicy",
+      "/v2/recaptchaConfig"
+    ]
+  }
+}
