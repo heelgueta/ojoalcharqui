@@ -2,3 +2,10 @@
 *.png binary
 *.jpg binary
 *.sqlite binary
+
+# Launchers: Windows batch needs CRLF; shell launchers need LF — pin them so a
+# checkout on either OS doesn't break the other's line endings.
+*.bat     text eol=crlf
+*.cmd     text eol=crlf
+*.command text eol=lf
+*.sh      text eol=lf
